@@ -1,0 +1,4 @@
+Note 23/06/2025:
+- Đã tích hợp MQTT cho board (dùng broker hivemqtt).
+- Đã đảo lại logic cho 2 động cơ (trước: Relay1 - Sprinkler, Motor - Filter; hiện tại: Motor - Sprinkler, Relay1 - Filter).
+- BOARD HIỆN TẠI ĐANG CẦN ANTEN ĐỂ THỰC HIỆN CÁC TÁC VỤ LIÊN QUAN WIFI.
