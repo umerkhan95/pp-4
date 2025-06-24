@@ -91,11 +91,11 @@ const char* mqtt_sub_topic = "esp32/test";
 const char* mqtt_pub_topic = "esp32/test";
 //=============================================================FUNCTION PROTOTYPE=============================================================
 void configurationForDog(int type);
-void handlePost();
-void getData();
-void createJson(char *tag, float value, char *unit);
-void addJsonObject(char *tag, float value, char *unit);
-void setupRouting(); 
+// void handlePost();
+// void getData();
+// void createJson(char *tag, float value, char *unit);
+// void addJsonObject(char *tag, float value, char *unit);
+// void setupRouting(); 
 
 void taskAuto(void *pvParameters);
 
@@ -133,7 +133,7 @@ void setup() {
   } 
   else {
     Serial.println("Connected... :)");
-    setupRouting();
+    // setupRouting();
     client.setServer(mqtt_server, mqtt_port);
     if (!client.connected()) reconnectMQTT();
     client.setCallback(mqttCallback);
@@ -225,7 +225,7 @@ void setup() {
 
 void loop() {
   if(statusWifi){
-    server.handleClient();
+    // server.handleClient();
     if (!client.connected()) reconnectMQTT();
     client.loop(); 
   }
@@ -280,103 +280,103 @@ void configurationForDog(int type){
   }
 }
 
-void setupRouting(){
-  server.on("/PT100", getLevelWater); 
-  server.on("/status", HTTP_POST, handlePost);    
-  server.begin();  
-}
+// void setupRouting(){
+//   server.on("/PT100", getLevelWater); 
+//   server.on("/status", HTTP_POST, handlePost);    
+//   server.begin();  
+// }
 
-void getLevelWater(){
-  // Serial.println("Get Level Water");
-  createJson("temp", temperature, "°C");
-  server.send(200, "application/json", buffer);
-}
+// void getLevelWater(){
+//   // Serial.println("Get Level Water");
+//   createJson("temp", temperature, "°C");
+//   server.send(200, "application/json", buffer);
+// }
 
-void handlePost() {
-  if (server.hasArg("plain") == false) {
-  }
-  String body = server.arg("plain");
-  deserializeJson(jsonDocument, body);
+// void handlePost() {
+//   if (server.hasArg("plain") == false) {
+//   }
+//   String body = server.arg("plain");
+//   deserializeJson(jsonDocument, body);
 
-  sprinkler.manual = jsonDocument["manual_sprinkler"];
-  sprinkler.duration = int(jsonDocument["duration_sprinkler"]);
-  sprinkler.cyclesInDay = jsonDocument["cycles_sprinkler"];
-  JsonArray daysArray = jsonDocument["days"].as<JsonArray>();
-  for (int i = 0; i < 7; i++) {
-    timeSys.days[i] = daysArray[i].as<int>();
-  }
+//   sprinkler.manual = jsonDocument["manual_sprinkler"];
+//   sprinkler.duration = int(jsonDocument["duration_sprinkler"]);
+//   sprinkler.cyclesInDay = jsonDocument["cycles_sprinkler"];
+//   JsonArray daysArray = jsonDocument["days"].as<JsonArray>();
+//   for (int i = 0; i < 7; i++) {
+//     timeSys.days[i] = daysArray[i].as<int>();
+//   }
 
-  JsonArray startTimeSprinkler_Array = jsonDocument["start_time_sprinkler"].as<JsonArray>();
-  start_time_sprinkler[0] = startTimeSprinkler_Array[0].as<uint32_t>();
-  start_time_sprinkler[1] = startTimeSprinkler_Array[1].as<uint32_t>();
-  Serial.print("Start time Sprinkler: ");
-  for (int i = 0; i < 2; i++) {
-    Serial.print(start_time_sprinkler[i]);
-    if (i == 0) Serial.print(":");
-  }
-  Serial.println();
+//   JsonArray startTimeSprinkler_Array = jsonDocument["start_time_sprinkler"].as<JsonArray>();
+//   start_time_sprinkler[0] = startTimeSprinkler_Array[0].as<uint32_t>();
+//   start_time_sprinkler[1] = startTimeSprinkler_Array[1].as<uint32_t>();
+//   Serial.print("Start time Sprinkler: ");
+//   for (int i = 0; i < 2; i++) {
+//     Serial.print(start_time_sprinkler[i]);
+//     if (i == 0) Serial.print(":");
+//   }
+//   Serial.println();
 
-  filter.manual = jsonDocument["manual_filter"];
-  filter.duration = int(jsonDocument["duration_filter"]);
+//   filter.manual = jsonDocument["manual_filter"];
+//   filter.duration = int(jsonDocument["duration_filter"]);
 
-  int typeDog = jsonDocument["type_dog"];
-  if(typeDog == 0){
-      Serial.println("===========================SETTING FROM APP===========================");
-      Serial.println("===============================SPRINKER===============================");
-      Serial.println("Manual Sprinkler: " + String(sprinkler.manual));
-      writeValueToNVS("ds", sprinkler.duration);
-      sprinkler.duration *= MINUTE;
-      Serial.println("Duration Sprinkler: " + String(sprinkler.duration/MINUTE) + "Minute");
-      writeValueToNVS("cycles", sprinkler.cyclesInDay);
-      Serial.println("Cycles Sprinkler: " + String(sprinkler.cyclesInDay));
+//   int typeDog = jsonDocument["type_dog"];
+//   if(typeDog == 0){
+//       Serial.println("===========================SETTING FROM APP===========================");
+//       Serial.println("===============================SPRINKER===============================");
+//       Serial.println("Manual Sprinkler: " + String(sprinkler.manual));
+//       writeValueToNVS("ds", sprinkler.duration);
+//       sprinkler.duration *= MINUTE;
+//       Serial.println("Duration Sprinkler: " + String(sprinkler.duration/MINUTE) + "Minute");
+//       writeValueToNVS("cycles", sprinkler.cyclesInDay);
+//       Serial.println("Cycles Sprinkler: " + String(sprinkler.cyclesInDay));
 
-      Serial.println("================================FILTER================================");
-      Serial.println("Manual Filter: " + String(filter.manual));
-      writeValueToNVS("df", filter.duration);
-      filter.duration *= HOUR;
-      Serial.println("Duration Filter: " + String(filter.duration/HOUR) + "h");
+//       Serial.println("================================FILTER================================");
+//       Serial.println("Manual Filter: " + String(filter.manual));
+//       writeValueToNVS("df", filter.duration);
+//       filter.duration *= HOUR;
+//       Serial.println("Duration Filter: " + String(filter.duration/HOUR) + "h");
 
-      Serial.println("=================================WEEK=================================");
-      Serial.print("Sprinkler Days array: ");
-      for (int i = 0; i < 7; i++) {
-        Serial.print(timeSys.days[i]);
-        if (i < 6) {
-          Serial.print(", ");
-        }
-      }
-      Serial.println();
-      Serial.println("=======================================================================");
-  }else{
-    Serial.println();
-    Serial.println("TYPE DOG");
-    Serial.print("type: ");
-    Serial.println(typeDog);
-    configurationForDog(typeDog);
-  }
+//       Serial.println("=================================WEEK=================================");
+//       Serial.print("Sprinkler Days array: ");
+//       for (int i = 0; i < 7; i++) {
+//         Serial.print(timeSys.days[i]);
+//         if (i < 6) {
+//           Serial.print(", ");
+//         }
+//       }
+//       Serial.println();
+//       Serial.println("=======================================================================");
+//   }else{
+//     Serial.println();
+//     Serial.println("TYPE DOG");
+//     Serial.print("type: ");
+//     Serial.println(typeDog);
+//     configurationForDog(typeDog);
+//   }
 
-  server.send(200, "application/json", "{}");
-}
+//   server.send(200, "application/json", "{}");
+// }
 
-void getData() {
-  jsonDocument.clear();
-  serializeJson(jsonDocument, buffer);
-  server.send(200, "application/json", buffer);
-}
+// void getData() {
+//   jsonDocument.clear();
+//   serializeJson(jsonDocument, buffer);
+//   server.send(200, "application/json", buffer);
+// }
 
-void createJson(char *tag, float value, char *unit) {  
-  jsonDocument.clear();
-  jsonDocument["type"] = tag;
-  jsonDocument["value"] = value;
-  jsonDocument["unit"] = unit;
-  serializeJson(jsonDocument, buffer);  
-}
+// void createJson(char *tag, float value, char *unit) {  
+//   jsonDocument.clear();
+//   jsonDocument["type"] = tag;
+//   jsonDocument["value"] = value;
+//   jsonDocument["unit"] = unit;
+//   serializeJson(jsonDocument, buffer);  
+// }
  
-void addJsonObject(char *tag, float value, char *unit) {
-  JsonObject obj = jsonDocument.createNestedObject();
-  obj["type"] = tag;
-  obj["value"] = value;
-  obj["unit"] = unit; 
-}
+// void addJsonObject(char *tag, float value, char *unit) {
+//   JsonObject obj = jsonDocument.createNestedObject();
+//   obj["type"] = tag;
+//   obj["value"] = value;
+//   obj["unit"] = unit; 
+// }
 
 void taskAuto(void *pvParameters) {
   int currentSprinklerCycle = 0;          // Sprinkler current cycles
@@ -412,23 +412,6 @@ void taskAuto(void *pvParameters) {
       int cycleMinute = startMinuteSprinkler + currentSprinklerCycle * timeSys.period;  // 
       // Serial.printf("minuteNow: %d - cycleMinute: %d\n", minuteNow, cycleMinute);
       if (minuteNow == cycleMinute && sec == 0 && !isMotorRunning) {
-        // isMotorRunning = true;
-        // Serial.println("Sprinkler On");
-        // digitalWrite(RELAY1, HIGH);
-        // digitalWrite(LED_GREEN, LOW);
-        // digitalWrite(LED_RED, LOW);
-        // digitalWrite(LED_BLUE, LOW);
-        // Serial.print("Active ");
-        // Serial.print(sprinkler.duration/MINUTE);
-        // Serial.println(" Minute");
-        // vTaskDelay(sprinkler.duration / portTICK_PERIOD_MS);
-        // digitalWrite(RELAY1, LOW);
-        // digitalWrite(LED_GREEN, HIGH);
-        // digitalWrite(LED_RED, HIGH);
-        // digitalWrite(LED_BLUE, HIGH);
-        // Serial.println("Sprinkler Off");
-        // Serial.println();
-
         isMotorRunning = true;
         Serial.println("Sprinkler ON");
         digitalWrite(LED_GREEN, LOW);
@@ -438,10 +421,10 @@ void taskAuto(void *pvParameters) {
         Serial.print(sprinkler.duration/MINUTE);
         Serial.println(" Minute");
 
-        int increaseTimeMs = 5000;
-        int decreaseTimeMs = 5000;
-        int totalDurationMs = sprinkler.duration * 60 * 1000;
-        int middleDelayMs = totalDurationMs - increaseTimeMs - decreaseTimeMs;
+        unsigned long increaseTimeMs = 5000;
+        unsigned long decreaseTimeMs = 5000;
+        unsigned long totalDurationMs = (unsigned long)sprinkler.duration;
+        unsigned long middleDelayMs = totalDurationMs - increaseTimeMs - decreaseTimeMs;
         if (middleDelayMs < 0) middleDelayMs = 0;  // avoid positive value
 
         // Increase speed of Sprinkler gradually in ~5s
@@ -449,10 +432,8 @@ void taskAuto(void *pvParameters) {
           analogWrite(MOTOR, pwm);
           vTaskDelay(increaseTimeMs / (256 - 106) / portTICK_PERIOD_MS);  // ~34ms
         }
-
         // Stay in maximum speed
         vTaskDelay(middleDelayMs / portTICK_PERIOD_MS);
-
         // Decrease speed of Sprinkler gradually in ~5s
         for (int pwm = 255; pwm >= 0; pwm--) {
           analogWrite(MOTOR, pwm);
@@ -586,54 +567,6 @@ void updateTimeInfo(void) {
 }
 
 void runFilter(void) {
-  // isMotorRunning = true;
-  // Serial.println("Filter On");
-  // digitalWrite(LED_GREEN, LOW);
-  // digitalWrite(LED_RED, HIGH);
-  // digitalWrite(LED_BLUE, LOW);
-
-  // // Bật chân MOTOR nếu cần thiết (tùy phần cứng)
-  // digitalWrite(MOTOR, HIGH);
-  // vTaskDelay(10 / portTICK_PERIOD_MS); // Đợi ổn định
-
-  // // Lưu thời điểm bắt đầu
-  // time_t startTime = mktime(&currentTime);
-  // time_t now;
-
-  // int stepDelay = 10;  // ms delay mỗi bước (có thể điều chỉnh)
-  
-  // while (true) {
-  //   // PWM tăng dần
-  //   for (int pwm = 106; pwm <= 255; pwm++) {
-  //     analogWrite(MOTOR, pwm);
-  //     vTaskDelay(stepDelay / portTICK_PERIOD_MS);
-  //   }
-
-  //   // PWM giảm dần
-  //   for (int pwm = 255; pwm >= 0; pwm--) {
-  //     analogWrite(MOTOR, pwm);
-  //     vTaskDelay(stepDelay / portTICK_PERIOD_MS);
-  //   }
-
-  //   // Cập nhật thời gian hiện tại
-  //   updateTimeInfo();
-  //   now = mktime(&currentTime);
-
-  //   if (difftime(now, startTime) * 1000 >= filter.duration) break;
-  // }
-
-  // // Tắt motor và đèn
-  // analogWrite(MOTOR, 0);
-  // digitalWrite(MOTOR, LOW);
-
-  // digitalWrite(LED_GREEN, HIGH);
-  // digitalWrite(LED_RED, HIGH);
-  // digitalWrite(LED_BLUE, HIGH);
-  // Serial.println("Filter Off");
-
-  // filterDoneToday = true;
-  // isMotorRunning = false;
-
   isMotorRunning = true;
   Serial.println("Filter On");
 
