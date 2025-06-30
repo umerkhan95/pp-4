@@ -1,13 +1,15 @@
 *: việc cần làm
 -: việc đã làm
 
-Note 23/06/2025:
+============================Note 23/06/2025============================
 - Đã tích hợp MQTT cho board (dùng broker hivemqtt).
 - Đã đảo lại logic cho 2 động cơ (trước: Relay1 - Sprinkler, Motor - Filter; hiện tại: Motor - Sprinkler, Relay1 - Filter).
 - BOARD HIỆN TẠI ĐANG CẦN ANTEN ĐỂ THỰC HIỆN CÁC TÁC VỤ LIÊN QUAN WIFI.
 
+=======================================================================
 
-Note 24/06/2025:
+
+============================Note 24/06/2025============================
 * Bỏ sensor PT100
 * Bỏ HTTP POST/GET
 * thêm chức năng scan wifi và gửi wifi list qua BLE
@@ -19,33 +21,42 @@ Note 24/06/2025:
 - Đã bỏ HTTP POST/GET
 - Vẽ lưu đồ hoạt động cho toàn hệ thống và cho task auto
 - Thêm task check connect với server (wifi + MQTT)
+=======================================================================
 
-Note 25/06/2025:
+============================Note 25/06/2025============================
 * Chỉnh sửa API của các hàm liên quan timer phù hợp với bản esp 3.0.7
 * Chỉnh sửa lại document (thay POST/GET thành MQTT) và push code lên git (ver mới nhất ổn định)
 * thêm chức năng scan wifi và gửi wifi list qua BLE
 
 - Đã done 2 ý đầu
 - Đã viết xong hàm scan wifi, đã scan được wifi nhưng còn 1 lỗi nhỏ
+=======================================================================
 
-Note 26/06/2025:
+============================Note 26/06/2025============================
 * Thêm task Manual để điều khiển động cơ với lệnh nhận từ App (Hiện tại sẽ test bằng lệnh gửi qua MQTT)
 * Chạy default 1 lần cho mỗi động cơ, bắt đầu 5p sau khi khởi động. Bơm sẽ 
 {
-	3 case:
-		- Mất điện: không hoạt động
-		- Có điện nhưng không có wifi: không wifi thì không get thời gian từ server nên không đồng bộ được thời gian => giải pháp: bắt đầu count từ 00:00:00, chạy hết period thì reset bộ đếm và lặp lại
-		- Có điện và wifi: hoạt động bình thường
+3 case:
+	- Mất điện: không hoạt động
+	- Có điện nhưng không có wifi: không wifi thì không get thời gian từ server nên không đồng bộ được thời gian => giải pháp: bắt đầu count từ 00:00:00, chạy hết period thì reset bộ đếm và lặp lại
+	- Có điện và wifi: hoạt động bình thường
 }
 
 - Đã scan được wifi và có wifi list.
 - Đã thêm task Manual và điều khiển được các động cơ ON/OFF
+=======================================================================
+
+============================Note 27/06/2025============================
+* Clean code để flexible trong việc sửa hoặc phát triển thêm
+* không wifi thì không get thời gian từ server nên không đồng bộ được thời gian => giải pháp: bắt đầu count từ 00:00:00, chạy hết period thì reset bộ đếm và lặp lại
+=======================================================================
+
+============================Note 28/06/2025============================
+- Đã clean và chia ra thành các module để tiện cho việc kế thừa và phát triển thêm
+=======================================================================
 
 
-
-
-
-
+============================Note 30/06/2025============================
 
 
 
