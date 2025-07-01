@@ -10,8 +10,10 @@
 class WIFI {
 private:
   static TaskHandle_t checkWifiTaskHandle;
+  static TaskHandle_t loopWebPortalTaskHandle;
   static void check_wifi_connection(void* param);
   static void taskScanWifi(void* param);
+  static void loop_webPortal(void *param);
 
 public:
   static bool statusWifi;

@@ -57,7 +57,9 @@
 
 
 ============================Note 30/06/2025============================
-
+- Trong trường hợp không có app + wifi, sẽ chạy auto default với Sprinkler 1 lần/ngày và 4 min/lần, Filter 1 lần/ngày và 4 hour/ngày
+- Đã fix lỗi logic chương trình bị treo khi chưa config wifi (nhưng có bug mới là không kết nối được wifi)
+- Fix các lỗi logic trong hoạt động
 
 
 

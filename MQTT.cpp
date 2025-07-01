@@ -1,3 +1,4 @@
+#include "freertos/projdefs.h"
 #include "MQTT.h"
 #include <PubSubClient.h>
 #include "WiFiClient.h"
@@ -42,7 +43,8 @@ void MQTT::check_mqtt_connection(void *param) {
 
 void MQTT::reconnectMQTT(void) {
   String clientId = "esp32-client-" + String(random(0xffff), HEX);
-  while (!client.connected()) {
+  int entry = 0;
+  while (!client.connected() && entry < 1) {
     Serial.print("Attempting MQTT connection...");
     if (client.connect(clientId.c_str())) {
       Serial.println("MQTT connected");
@@ -50,19 +52,16 @@ void MQTT::reconnectMQTT(void) {
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
-      Serial.println(" try again in 5 seconds");
-      delay(5000);
+      Serial.println(". Going to try again");
+      vTaskDelay(pdMS_TO_TICKS(10));
     }
+    entry++;
   }
 }
 
 void MQTT::mqttCallback(char *topic, byte *payload, unsigned int length) {
   Serial.print("Message arrived in topic: ");
   Serial.println(topic);
-  // String body = "";
-  // for (int i = 0; i < length; i++) {
-  //   body += (char)payload[i];
-  // }
   char body[512];
   memcpy(body, payload, length);
   body[length] = '\0';

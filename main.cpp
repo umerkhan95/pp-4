@@ -1,4 +1,6 @@
+#include "esp32-hal-ledc.h"
 #include "main.h"
+#include "driver/ledc.h"
 
 // ============================================================CLASS OBJECT============================================================
 WIFI _wifi;
@@ -6,9 +8,9 @@ MQTT _mqtt;
 // ====================================================================================================================================
 
 // =============================================================GLOBAL VAR=============================================================
-timer timeSys;
-configPump sprinkler;
-configPump filter;
+TimeSys_t _timeSys;
+configPump_t _sprinkler;
+configPump_t _filter;
 
 bool isManualRunning = false;
 bool haveMessageViaMQTT;
@@ -47,21 +49,23 @@ char buffer[250];
 void Setup() {
   Serial.begin(115200);
   //=================================DEFINE PINS=================================
-  pinMode(LED_GREEN, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
-  pinMode(RELAY1, OUTPUT);
-  pinMode(MOTOR, OUTPUT);
+  pinMode(LED_GREEN_PIN, OUTPUT);
+  pinMode(LED_RED_PIN, OUTPUT);
+  pinMode(LED_BLUE_PIN, OUTPUT);
+  pinMode(FILTER_PIN, OUTPUT);
+  pinMode(SPRINKLER_PIN, OUTPUT);
 
   Wire.begin(I2C_SDA, I2C_SCL);
 
-  digitalWrite(LED_GREEN, HIGH);
-  digitalWrite(LED_RED, HIGH);
-  digitalWrite(LED_BLUE, HIGH);
-  digitalWrite(RELAY1, LOW);
-  digitalWrite(MOTOR, LOW);
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  digitalWrite(LED_RED_PIN, HIGH);
+  digitalWrite(LED_BLUE_PIN, HIGH);
+  digitalWrite(FILTER_PIN, LOW);
+  digitalWrite(SPRINKLER_PIN, LOW);
 
-  timeSys.firstTime = 1;
+  _timeSys.firstTime = 1;
+  //=====================================LEDC====================================
+  ledcAttach(SPRINKLER_PIN, PWM_FREQ, PWM_RESOLUTION);
   //====================================FLASH====================================
   esp_err_t err = nvs_flash_init();
   if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -71,40 +75,52 @@ void Setup() {
   ESP_ERROR_CHECK(err);
 
   //Sprinkler duration
-  sprinkler.duration = readValueFromNVS("ds");
-  if (sprinkler.duration == 0) {
-    sprinkler.duration = 4;
-    writeValueToNVS("ds", sprinkler.duration);
+  _sprinkler.duration = readValueFromNVS("ds");
+  if (_sprinkler.duration == 0) {
+    _sprinkler.duration = 4;
+    writeValueToNVS("ds", _sprinkler.duration);
   }
   // Filter duration
-  filter.duration = readValueFromNVS("df");
-  if (filter.duration == 0) {
-    filter.duration = 4;
-    writeValueToNVS("df", filter.duration);
+  _filter.duration = readValueFromNVS("df");
+  if (_filter.duration == 0) {
+    _filter.duration = 4;
+    writeValueToNVS("df", _filter.duration);
   }
 
-  sprinkler.cyclesInDay = readValueFromNVS("cycles");
-  if (sprinkler.cyclesInDay == 0) {
-    sprinkler.cyclesInDay = 1;
+  _sprinkler.cyclesInDay = readValueFromNVS("cycles");
+  if (_sprinkler.cyclesInDay == 0) {
+    _sprinkler.cyclesInDay = 1;
     writeValueToNVS("cycles", 1);
   }
 
   Serial.println("Days: ");
-  if (readDaysFromNVS(timeSys.days)) {
+  if (readDaysFromNVS(_timeSys.days)) {
     for (int i = 0; i < 7; i++) {
-      Serial.print(timeSys.days[i]);
+      Serial.print(_timeSys.days[i]);
+      if (i < 6) Serial.print(", ");
+    }
+  }
+  else {
+    for (int i = 0; i < 7; i++) {
+      _timeSys.days[i] = 1;
+      Serial.print(_timeSys.days[i]);
       if (i < 6) Serial.print(", ");
     }
   }
   Serial.println();
   // Show settings in NVS
   Serial.println("===========================SETTING===========================");
-  Serial.println("Sprinkler Duration: " + String(sprinkler.duration)+" Minute");
-  Serial.println("Filter Duration: " + String(filter.duration) + "h");
-  Serial.println("Sprinkler Cycles: " + String(sprinkler.cyclesInDay));
+  Serial.println("Sprinkler Duration: " + String(_sprinkler.duration)+" Minute");
+  Serial.println("Filter Duration: " + String(_filter.duration) + "h");
+  Serial.println("Sprinkler Cycles: " + String(_sprinkler.cyclesInDay));
   Serial.println("=============================================================");
+  //====================================TASKS====================================
+  // xTaskCreate(taskAuto, "Auto Task", 4096, NULL, 5, &autoTaskHandle);
+  xTaskCreate(taskManual, "Manual Task", 2048, NULL, 5, &manualTaskHandle);
+  xTaskCreate(getTime, "Get Time", 2048, NULL, 4, &getTimeTaskHandle);
+  xTaskCreate(taskSaveSettings, "Task Save Settings", 2048, NULL, 3, &saveSettingsTaskHandle);
   //====================================WI-FI====================================
-  delay(500 / portTICK_PERIOD_MS);
+  // delay(500 / portTICK_PERIOD_MS);
   _wifi.wifi_scan_handle();
   _wifi.ConnectWifi();
   //====================================MQTT====================================
@@ -115,12 +131,8 @@ void Setup() {
   getCurrentTime();
   tickSecond = currentTime.tm_sec;
   onTimer(&timer_itr, &countTimer);
-  //====================================TASKS====================================
-  xTaskCreate(taskAuto, "Auto Task", 4096, NULL, 5, &autoTaskHandle);
-  xTaskCreate(taskManual, "Manual Task", 2048, NULL, 5, &manualTaskHandle);
-  xTaskCreate(getTime, "Get Time", 2048, NULL, 4, &getTimeTaskHandle);
-  xTaskCreate(taskSaveSettings, "Task Save Settings", 2048, NULL, 3, &saveSettingsTaskHandle);
   //=====================================END=====================================
+  Serial.println("End setup.");
 }
 
 // ===============================================================LOOP================================================================
@@ -128,17 +140,17 @@ void Loop() {
   vTaskDelay(1 / portTICK_PERIOD_MS);
 }
 
-// ===============================================================TASKS================================================================
+// ==============================================================TASKS================================================================
 // Task save settings received via MQTT Broker
 void taskSaveSettings(void *param) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     if (haveMessageViaMQTT) {
       Serial.println("Saving settings to NVS...");
-      writeValueToNVS("ds", sprinkler.duration);
-      writeValueToNVS("cycles", sprinkler.cyclesInDay);
-      writeValueToNVS("df", filter.duration);
-      saveDaysToNVS(timeSys.days);
+      writeValueToNVS("ds", _sprinkler.duration);
+      writeValueToNVS("cycles", _sprinkler.cyclesInDay);
+      writeValueToNVS("df", _filter.duration);
+      saveDaysToNVS(_timeSys.days);
       writeValueToNVS("start_hour", start_time_sprinkler[0]);
       writeValueToNVS("start_minute", start_time_sprinkler[1]);
       haveMessageViaMQTT = false;
@@ -152,6 +164,20 @@ void taskAuto(void *pvParameters) {
   int currentSprinklerCycle = 0;          // Sprinkler current cycles
   int lastRunDay;                         // Last day that have set to run
   while (true) {
+    Serial.println("Checking in taskAuto...");
+    if (!_wifi.getWifiStatus() && _timeSys.firstTime == 1) {
+      _sprinkler.autoControl = true;
+      runSprinkler();
+      _sprinkler.autoControl = false;
+      sprinklerJustFinished = true;
+      if (!filterDoneToday) {
+        sprinklerJustFinished = false;
+        runFilter();
+      }
+      _timeSys.firstTime = 0;
+      continue;
+    }
+
     updateTimeInfo();
 
     int wday = currentTime.tm_wday;
@@ -162,51 +188,51 @@ void taskAuto(void *pvParameters) {
     int minuteNow = hour * 60 + min;  // exchange current time (hour & minute) to minute
     if (wday != lastRunDay && minuteNow == startMinuteSprinkler) {
       currentSprinklerCycle = 0;
-      timeSys.firstTime = 1;
+      _timeSys.firstTime = 1;
       filterDoneToday = false;
       lastRunDay = wday;
     }
 
-    if (timeSys.days[wday] == 1 && !isManualRunning) {
-      currentSprinklerCycle = (minuteNow - startMinuteSprinkler) / timeSys.period;
+    if (_timeSys.days[wday] == 1 && !isManualRunning) {
+      currentSprinklerCycle = (minuteNow - startMinuteSprinkler) / _timeSys.period;
       // Serial.printf("currentSprinklerCycle: %d\n", currentSprinklerCycle);
       if (currentSprinklerCycle < 0) currentSprinklerCycle = 0;
-      else if (currentSprinklerCycle >= sprinkler.cyclesInDay) {
+      else if (currentSprinklerCycle >= _sprinkler.cyclesInDay) {
         Serial.println("All sprinkler cycles finished today");
         continue;
       }
-      int cycleMinute = startMinuteSprinkler + currentSprinklerCycle * timeSys.period; 
+      int cycleMinute = startMinuteSprinkler + currentSprinklerCycle * _timeSys.period; 
       // Serial.printf("minuteNow: %d - cycleMinute: %d\n", minuteNow, cycleMinute);
-      if (minuteNow == cycleMinute && sec == 0 && !isMotorRunning && !sprinkler.manual) {
-        sprinkler.autoControl = true;
+      if (minuteNow == cycleMinute && sec == 0 && !isMotorRunning && !_sprinkler.manual) {
+        _sprinkler.autoControl = true;
         runSprinkler();
-        sprinkler.autoControl = false;
+        _sprinkler.autoControl = false;
         sprinklerJustFinished = true;
-        timeSys.firstTime = 0;
+        // timeSys.firstTime = 0;
         currentSprinklerCycle++;
-        if (currentSprinklerCycle > sprinkler.cyclesInDay) {
+        if (currentSprinklerCycle > _sprinkler.cyclesInDay) {
           vTaskDelay(10 / portTICK_PERIOD_MS);
           continue;
         }
       }
 
-      if (minuteNow >= startMinuteSprinkler && !filterDoneToday && !filter.manual) {
+      if (minuteNow >= startMinuteSprinkler && !filterDoneToday && !_filter.manual) {
         if (!isMotorRunning && sprinklerJustFinished) {
           sprinklerJustFinished = false;
           runFilter();
         }
-        else if (!isMotorRunning && currentSprinklerCycle >= sprinkler.cyclesInDay) {
+        else if (!isMotorRunning && currentSprinklerCycle >= _sprinkler.cyclesInDay) {
           runFilter();
         }
       }
     }
     else {
       if (!isManualRunning) { // Only OFF when task Manual is not running
-        digitalWrite(MOTOR, LOW);
-        digitalWrite(RELAY1, LOW);
-        digitalWrite(LED_GREEN, HIGH);
-        digitalWrite(LED_RED, HIGH);
-        digitalWrite(LED_BLUE, HIGH);
+        digitalWrite(SPRINKLER_PIN, LOW);
+        digitalWrite(FILTER_PIN, LOW);
+        digitalWrite(LED_GREEN_PIN, HIGH);
+        digitalWrite(LED_RED_PIN, HIGH);
+        digitalWrite(LED_BLUE_PIN, HIGH);
       }
     }
     vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -218,53 +244,53 @@ void taskManual(void *param) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     
-    isManualRunning = false; // default set to false, be true if there is a motor on
+    isManualRunning = false; // default set to false, be true if there is a SPRINKLER_PIN on
 
     // Check and control Sprinkler
-    if (sprinkler.manual == 1 && !isMotorRunning) {
+    if (_sprinkler.manual == 1 && !isMotorRunning) {
       Serial.println("Manual Sprinkler ON");
       isMotorRunning = true;
       isManualRunning = true;
-      digitalWrite(LED_GREEN, LOW);
-      digitalWrite(LED_RED, LOW);
-      digitalWrite(LED_BLUE, LOW);
+      digitalWrite(LED_GREEN_PIN, LOW);
+      digitalWrite(LED_RED_PIN, LOW);
+      digitalWrite(LED_BLUE_PIN, LOW);
       // Increase gradually PWM for Sprinkler in ~5s
       for (int pwm = 106; pwm < 256; pwm++) {
-        analogWrite(MOTOR, pwm);
+        analogWrite(SPRINKLER_PIN, pwm);
         vTaskDelay(5000 / (256 - 106) / portTICK_PERIOD_MS);  // ~34ms
       }
-    } else if (sprinkler.manual == 0 && digitalRead(MOTOR) != LOW) {
+    } else if (_sprinkler.manual == 0 && digitalRead(SPRINKLER_PIN) != LOW) {
       Serial.println("Manual Sprinkler OFF");
       // Decrease gradually PWM for Sprinkler in ~5s
       for (int pwm = 255; pwm >= 0; pwm--) {
-        analogWrite(MOTOR, pwm);
+        analogWrite(SPRINKLER_PIN, pwm);
         vTaskDelay(5000 / 256 / portTICK_PERIOD_MS);  // ~19ms
       }
-      digitalWrite(LED_GREEN, HIGH);
-      digitalWrite(LED_RED, HIGH);
-      digitalWrite(LED_BLUE, HIGH);
+      digitalWrite(LED_GREEN_PIN, HIGH);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, HIGH);
     }
 
     // Check and control Filter
-    else if (filter.manual == 1 && !isMotorRunning) {
+    else if (_filter.manual == 1 && !isMotorRunning) {
       Serial.println("Manual Filter ON");
       isMotorRunning = true;
       isManualRunning = true;
-      digitalWrite(RELAY1, HIGH); // Turn ON RELAY1
-      digitalWrite(LED_GREEN, LOW);
-      digitalWrite(LED_RED, HIGH);
-      digitalWrite(LED_BLUE, LOW);
-    } else if (filter.manual == 0) {
+      digitalWrite(FILTER_PIN, HIGH); // Turn ON FILTER_PIN
+      digitalWrite(LED_GREEN_PIN, LOW);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, LOW);
+    } else if (_filter.manual == 0) {
       Serial.println("Manual Filter OFF");
-      digitalWrite(RELAY1, LOW); // Turn OFF RELAY1
-      digitalWrite(LED_GREEN, HIGH);
-      digitalWrite(LED_RED, HIGH);
-      digitalWrite(LED_BLUE, HIGH);
+      digitalWrite(FILTER_PIN, LOW); // Turn OFF FILTER_PIN
+      digitalWrite(LED_GREEN_PIN, HIGH);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, HIGH);
     }
 
     // Update isMotorRunning & isManualRunning
-    isMotorRunning = (sprinkler.manual == 1 || filter.manual == 1);
-    isManualRunning = isMotorRunning; // isManualRunning be true if there is a motor ON
+    isMotorRunning = (_sprinkler.manual == 1 || _filter.manual == 1);
+    isManualRunning = isMotorRunning; // isManualRunning be true if there is a SPRINKLER_PIN ON
   }
 }
 
@@ -352,7 +378,7 @@ void getTime(void *param) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
     getCurrentTime();
-    timeSys.period = 24*HOUR/sprinkler.cyclesInDay;
+    _timeSys.period = 24*HOUR/_sprinkler.cyclesInDay;
   }
 }
 
@@ -369,7 +395,7 @@ void IRAM_ATTR timer_itr() {
 // Function for updating time infomation
 void updateTimeInfo(void) {
   if (_wifi.getWifiStatus()) {
-    timeSys.period = 24*60/sprinkler.cyclesInDay;
+    _timeSys.period = 24*60/_sprinkler.cyclesInDay;
     struct tm t;
     if (getLocalTime(&t)) {
       currentTime = t;
@@ -392,22 +418,22 @@ void updateTimeInfo(void) {
 // Function running Filter pump
 void runFilter(void) {
   isMotorRunning = true;
-  filter.autoControl = true;
+  _filter.autoControl = true;
   Serial.println("Filter On");
 
-  digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED, HIGH);
-  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN_PIN, LOW);
+  digitalWrite(LED_RED_PIN, HIGH);
+  digitalWrite(LED_BLUE_PIN, LOW);
 
-  digitalWrite(RELAY1, HIGH); // Turn ON relay for filter
-  vTaskDelay(filter.duration * HOUR / portTICK_PERIOD_MS);
-  digitalWrite(RELAY1, LOW);  // Turn OFF relay
+  digitalWrite(FILTER_PIN, HIGH); // Turn ON relay for filter
+  vTaskDelay(_filter.duration * HOUR / portTICK_PERIOD_MS);
+  digitalWrite(FILTER_PIN, LOW);  // Turn OFF relay
 
-  digitalWrite(LED_GREEN, HIGH);
-  digitalWrite(LED_RED, HIGH);
-  digitalWrite(LED_BLUE, HIGH);
+  digitalWrite(LED_GREEN_PIN, HIGH);
+  digitalWrite(LED_RED_PIN, HIGH);
+  digitalWrite(LED_BLUE_PIN, HIGH);
   Serial.println("Filter Off");
-  filter.autoControl = false;
+  _filter.autoControl = false;
 
   filterDoneToday = true;
   isMotorRunning = false;
@@ -418,34 +444,36 @@ void runSprinkler(void) {
   isMotorRunning = true;
   
   Serial.println("Sprinkler ON");
-  digitalWrite(LED_GREEN, LOW);
-  digitalWrite(LED_RED, LOW);
-  digitalWrite(LED_BLUE, LOW);
+  digitalWrite(LED_GREEN_PIN, LOW);
+  digitalWrite(LED_RED_PIN, LOW);
+  digitalWrite(LED_BLUE_PIN, LOW);
   Serial.print("Active ");
-  Serial.print(sprinkler.duration);
+  Serial.print(_sprinkler.duration);
   Serial.println(" Minute");
 
   uint32_t increaseTimeMs = 5000;
   uint32_t decreaseTimeMs = 5000;
-  uint32_t totalDurationMs = sprinkler.duration * MINUTE;
+  uint32_t totalDurationMs = _sprinkler.duration * MINUTE;
   uint32_t middleDelayMs = totalDurationMs - increaseTimeMs - decreaseTimeMs;
 
-  Serial.printf("sprinkler.duration: %lu - totalDurationMs: %lu - middleDelayMs: %lu\n", sprinkler.duration, totalDurationMs, middleDelayMs);
+  Serial.printf("sprinkler.duration: %lu - totalDurationMs: %lu - middleDelayMs: %lu\n", _sprinkler.duration, totalDurationMs, middleDelayMs);
   if (middleDelayMs < 0) middleDelayMs = 0;  // avoid positive value
 
-  // Increase speed of Sprinkler gradually in ~5s
-  for (int pwm = 106; pwm < 256; pwm++) {
-    analogWrite(MOTOR, pwm);
-    vTaskDelay(increaseTimeMs / (256 - 106) / portTICK_PERIOD_MS);  // ~34ms
-  }
+  // Increase speed of Sprinkler gradually in 5s
+  // for (int pwm = 106; pwm < 256; pwm++) {
+  //   analogWrite(SPRINKLER_PIN, pwm);
+  //   vTaskDelay(increaseTimeMs / (256 - 106) / portTICK_PERIOD_MS);  // ~34ms
+  // }
+  ledcFade(SPRINKLER_PIN, 0, 255, 5000);
   // Stay in maximum speed
   vTaskDelay(middleDelayMs / portTICK_PERIOD_MS);
 
   // Decrease speed of Sprinkler gradually in ~5s
-  for (int pwm = 255; pwm >= 0; pwm--) {
-    analogWrite(MOTOR, pwm);
-    vTaskDelay(decreaseTimeMs / 256 / portTICK_PERIOD_MS);  // ~19ms
-  }
+  // for (int pwm = 255; pwm >= 0; pwm--) {
+  //   analogWrite(SPRINKLER_PIN, pwm);
+  //   vTaskDelay(decreaseTimeMs / 256 / portTICK_PERIOD_MS);  // ~19ms
+  // }
+  ledcFade(SPRINKLER_PIN, 255, 0, 5000);
 
   Serial.println("Sprinkler Off");
   
@@ -455,60 +483,60 @@ void runSprinkler(void) {
 // =======================================================PROCESS DATA FUNCTIONs=======================================================
 void configurationForDog(int type){
   if(type == SMALL_DOG){
-    filter.duration = 2;
-    sprinkler.duration = 4;
+    _filter.duration = 2;
+    _sprinkler.duration = 4;
 
     Serial.println("Config DOG SMALL");
-    writeValueToNVS("ds", sprinkler.duration);
-    Serial.println("Sprinkler Duration: " + String(sprinkler.duration) + "minute");
+    writeValueToNVS("ds", _sprinkler.duration);
+    Serial.println("Sprinkler Duration: " + String(_sprinkler.duration) + "minute");
 
-    writeValueToNVS("df", filter.duration);
-    Serial.println("Filter Duration: " + String(filter.duration) + "h");
+    writeValueToNVS("df", _filter.duration);
+    Serial.println("Filter Duration: " + String(_filter.duration) + "h");
 
     writeValueToNVS("cycles", 1);
-    timeSys.period = 24*HOUR;
+    _timeSys.period = 24*HOUR;
   }else if(type == MEDIUM_DOG){
-    filter.duration = 3;
-    sprinkler.duration = 5;
+    _filter.duration = 3;
+    _sprinkler.duration = 5;
 
     Serial.println("Config DOG MEDIUM");
-    writeValueToNVS("ds", sprinkler.duration);
-    Serial.println("Sprinkler Duration: " + String(sprinkler.duration) + "minute");
+    writeValueToNVS("ds", _sprinkler.duration);
+    Serial.println("Sprinkler Duration: " + String(_sprinkler.duration) + "minute");
 
-    writeValueToNVS("df", filter.duration);
-    Serial.println("Filter Duration: " + String(filter.duration) + "h");
+    writeValueToNVS("df", _filter.duration);
+    Serial.println("Filter Duration: " + String(_filter.duration) + "h");
 
     writeValueToNVS("cycles", 1);
-    timeSys.period = 24*HOUR;
+    _timeSys.period = 24*HOUR;
   }else if(type == LARGE_DOG){
-    filter.duration = 4;
-    sprinkler.duration = 7;
+    _filter.duration = 4;
+    _sprinkler.duration = 7;
 
     Serial.println("Config DOG LARGE");
-    writeValueToNVS("ds", sprinkler.duration);
-    Serial.println("Sprinkler Duration: " + String(sprinkler.duration) + "minute");
+    writeValueToNVS("ds", _sprinkler.duration);
+    Serial.println("Sprinkler Duration: " + String(_sprinkler.duration) + "minute");
 
-    writeValueToNVS("df", filter.duration);
-    Serial.println("Filter Duration: " + String(filter.duration) + "h");
+    writeValueToNVS("df", _filter.duration);
+    Serial.println("Filter Duration: " + String(_filter.duration) + "h");
 
     writeValueToNVS("cycles", 1);
-    timeSys.period = 24*HOUR;
+    _timeSys.period = 24*HOUR;
   }
 }
 
 void handleMQTTSettings(const JsonDocument &doc) {
   haveMessageViaMQTT = false;
-  uint8_t lastSprinklerManualState = sprinkler.manual;
-  uint8_t lastFilterManualState = filter.manual;
+  uint8_t lastSprinklerManualState = _sprinkler.manual;
+  uint8_t lastFilterManualState = _filter.manual;
 
-  sprinkler.manual = doc["manual_sprinkler"];
-  sprinkler.duration = int(doc["duration_sprinkler"]);
-  sprinkler.cyclesInDay = doc["cycles_sprinkler"];
+  _sprinkler.manual = doc["manual_sprinkler"];
+  _sprinkler.duration = int(doc["duration_sprinkler"]);
+  _sprinkler.cyclesInDay = doc["cycles_sprinkler"];
 
   if (doc["days"].is<JsonArrayConst>()) {
     JsonArrayConst daysArray = doc["days"].as<JsonArrayConst>();
     for (int i = 0; i < 7; i++) {
-      timeSys.days[i] = daysArray[i].as<int>();
+      _timeSys.days[i] = daysArray[i].as<int>();
     }
   }
 
@@ -520,24 +548,24 @@ void handleMQTTSettings(const JsonDocument &doc) {
 
   startMinuteSprinkler = start_time_sprinkler[0] * 60 + start_time_sprinkler[1];
 
-  filter.manual = doc["manual_filter"];
-  filter.duration = int(doc["duration_filter"]);
+  _filter.manual = doc["manual_filter"];
+  _filter.duration = int(doc["duration_filter"]);
 
   int typeDog = doc["type_dog"];
   if (typeDog == 0) {
     Serial.println("================== MQTT SETTING ==================");
     Serial.println("=================== SPRINKLER ====================");
-    Serial.println("Manual Sprinkler: " + String(sprinkler.manual));
-    Serial.println("Duration Sprinkler: " + String(sprinkler.duration) + " Minute");
-    Serial.println("Cycles Sprinkler: " + String(sprinkler.cyclesInDay));
+    Serial.println("Manual Sprinkler: " + String(_sprinkler.manual));
+    Serial.println("Duration Sprinkler: " + String(_sprinkler.duration) + " Minute");
+    Serial.println("Cycles Sprinkler: " + String(_sprinkler.cyclesInDay));
     Serial.println("Start time Sprinkler: " + String(start_time_sprinkler[0]) + ":" + String(start_time_sprinkler[1]));
     Serial.println("==================== FILTER ======================");
-    Serial.println("Manual Filter: " + String(filter.manual));
-    Serial.println("Duration Filter: " + String(filter.duration) + " h");
+    Serial.println("Manual Filter: " + String(_filter.manual));
+    Serial.println("Duration Filter: " + String(_filter.duration) + " h");
     Serial.println("==================== WEEK ========================");
     Serial.print("Sprinkler Days: ");
     for (int i = 0; i < 7; i++) {
-        Serial.print(timeSys.days[i]);
+        Serial.print(_timeSys.days[i]);
         if (i < 6) Serial.print(", ");
     }
     Serial.println();
@@ -555,7 +583,7 @@ void handleMQTTSettings(const JsonDocument &doc) {
     xTaskNotifyGive(saveSettingsTaskHandle);
   }
 
-  if (lastSprinklerManualState != sprinkler.manual || lastFilterManualState != filter.manual) {
+  if (lastSprinklerManualState != _sprinkler.manual || lastFilterManualState != _filter.manual) {
     Serial.println("Send notify to run MANUAL");
     xTaskNotifyGive(manualTaskHandle);
   }

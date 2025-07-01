@@ -1,8 +1,6 @@
 #include "WiFiClient.h"
-// #include "HardwareSerial.h"
 #include "WIFI_Class.h"
 #include <WiFiManager.h>
-// #include <NTPClient.h>
 #include <WiFiUdp.h>
 
 WiFiManager wm;
@@ -12,13 +10,16 @@ WiFiUDP udp;
 bool WIFI::statusWifi = false;
 char WIFI::ssid_list[WIFI_AP_SSID_LEN] = {0};
 TaskHandle_t WIFI::checkWifiTaskHandle = NULL;
+TaskHandle_t WIFI::loopWebPortalTaskHandle = NULL;
 
 void WIFI::ConnectWifi(void) {
-  wm.setConnectTimeout(3000);
+  wm.setConfigPortalBlocking(false);
   statusWifi = wm.autoConnect("AutoConnectAP", "12345678");
 
   if (checkWifiTaskHandle == NULL) 
-    xTaskCreate(check_wifi_connection, "Task check wifi", 2048, NULL, 3, &(checkWifiTaskHandle));
+    xTaskCreate(check_wifi_connection, "Task check wifi", 4096, NULL, 3, &(checkWifiTaskHandle));
+  if (!WiFi.isConnected() && loopWebPortalTaskHandle == NULL)
+    xTaskCreate(loop_webPortal, "Task loop WebPortal", 4096, NULL, 2, &loopWebPortalTaskHandle);
 }
 
 void WIFI::DisconnectWifi(void) {
@@ -85,5 +86,25 @@ void WIFI::check_wifi_connection(void *param) {
     }
     Serial.println("Connected");
     vTaskDelay(30000 / portTICK_PERIOD_MS);
+  }
+}
+
+void WIFI::loop_webPortal(void *param) {
+  for (;;) {
+    wm.process();  // Need to loop to maintain web portal
+
+    // If wifi connected, delete this task
+    if (WiFi.isConnected()) {
+      Serial.println("[WiFiManager] Connected to AP via portal.");
+      statusWifi = true;
+
+      if (loopWebPortalTaskHandle != NULL) {
+        vTaskDelete(loopWebPortalTaskHandle);
+        loopWebPortalTaskHandle = NULL;
+      }
+
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(100));
   }
 }

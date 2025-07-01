@@ -9,11 +9,14 @@
 #define GET_TIME_PERIOD 60
 #define TIMER_FREQ 1000000
 
-#define LED_GREEN 10
-#define LED_RED 3
-#define LED_BLUE 0
-#define RELAY1 20
-#define MOTOR 21
+#define PWM_FREQ 4000
+#define PWM_RESOLUTION 8
+
+#define LED_GREEN_PIN 10
+#define LED_RED_PIN   3
+#define LED_BLUE_PIN  0
+#define FILTER_PIN    20
+#define SPRINKLER_PIN 21
 #define TMP36 1
 #define DRDY 7
 #define I2C_SDA 6
@@ -24,20 +27,20 @@ typedef struct {
   uint32_t cycles;
   int days[7];
   int firstTime;
-}timer;
+} TimeSys_t;
 
 typedef struct{
   uint8_t manual:1;
   uint8_t autoControl:1;
   uint32_t duration;
   uint16_t cyclesInDay;
-}configPump;
+} configPump_t;
 
 typedef enum {
   SMALL_DOG = 1,
   MEDIUM_DOG,
   LARGE_DOG
-} Dog_type;
+} Dog_type_t;
 
 
 
