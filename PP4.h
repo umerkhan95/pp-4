@@ -1,11 +1,13 @@
 #ifndef _PP4_H_
 #define _PP4_H_
 #include <Arduino.h>
-#define DEBUG
+// #define DEBUG
+
+#define VERSION "v2.7.0"
 
 // Định nghĩa hằng số
-#define MINUTE 60000
-#define HOUR 3600000
+#define MINUTE 60
+#define HOUR   3600
 #define GET_TIME_PERIOD 60
 #define TIMER_FREQ 1000000
 
@@ -42,6 +44,11 @@ typedef enum {
   LARGE_DOG
 } Dog_type_t;
 
+typedef enum {
+  TIMER_IDLE = 0,
+  TIMER_DEFAULT,
+  TIMER_NORMAL
+} Timer_state_t;
 
 
 #endif //_PP4_H_

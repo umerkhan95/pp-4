@@ -55,16 +55,24 @@
 - Đã clean và chia ra thành các module để tiện cho việc kế thừa và phát triển thêm
 =======================================================================
 
-
 ============================Note 30/06/2025============================
 - Trong trường hợp không có app + wifi, sẽ chạy auto default với Sprinkler 1 lần/ngày và 4 min/lần, Filter 1 lần/ngày và 4 hour/ngày
 - Đã fix lỗi logic chương trình bị treo khi chưa config wifi (nhưng có bug mới là không kết nối được wifi)
 - Fix các lỗi logic trong hoạt động
+=======================================================================
 
+============================Note 01/07/2025============================
+- Chuyển sang dùng timer thay cho NTP server (chưa hoàn thành)
+- Support team test ở China test firmware.
 
+Có 2 timer, sprinklerTimer (đếm mỗi khi đến period thì set cờ và reset) và counterTimer (đếm mỗi giây đến khi có lệnh dừng)
+StartTimer khi nào?
+=> Trong setup và chạy mặc định 1 lần/ngày, bắt đầu count từ 00:00:00
+=> Khi user setting và gửi xuống board:
+  - Lấy thời gian hiện tại từ App (Thứ ngày tháng năm giờ phút giây). Kiểm tra giờ hiện tại với start_time:
+   + Chưa qua start_time: tính toán xem còn bao lâu nữa là đến start_time và cho (counterTimer) đếm đến lúc đó để bắt đầu SprinklerTimer, đến start_time rồi thì cập nhật lại thời gian hiện tại và reset SprinklerTimer và dừng counterTimer. (quy sang phút) 
+   + Đã qua start_time: (cho các động cơ chạy), tính toán xem đã qua bao lâu rồi để tính xem còn bao lâu nữa là đến cycle tiếp theo (quy sang phút)
+=======================================================================
 
-
-
-
-
-
+============================Note 02/07/2025============================
+* Check lại hoạt động của 2 pump khi chạy default

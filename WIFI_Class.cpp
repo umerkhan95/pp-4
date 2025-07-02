@@ -80,8 +80,8 @@ void WIFI::check_wifi_connection(void *param) {
       Serial.println("Attempting to connect to WiFi...");
       WIFI::ConnectWifi();
       if (!statusWifi) {
-        Serial.println("Failed to connect. Retrying in 5 seconds...");
-        vTaskDelay(5000 / portTICK_PERIOD_MS);
+        Serial.println("Failed to connect. Retrying in 2 seconds...");
+        vTaskDelay(2000 / portTICK_PERIOD_MS);
       }
     }
     Serial.println("Connected");
