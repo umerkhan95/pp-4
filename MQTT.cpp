@@ -27,7 +27,7 @@ void MQTT::MQTT_init(const char* publish_topic, const char* subscribe_topic, con
   client.setCallback(mqttCallback);
   client.publish(mqtt_pub_topic, "Connected to MQTT");
 
-  xTaskCreate(MQTT::check_mqtt_connection, "Check MQTT connection", 2048, NULL, 3, &checkMQTTConnection);
+  xTaskCreate(MQTT::check_mqtt_connection, "Check MQTT connection", 4096, NULL, 3, &checkMQTTConnection);
 }
 
 void MQTT::check_mqtt_connection(void *param) {
@@ -44,7 +44,7 @@ void MQTT::check_mqtt_connection(void *param) {
 void MQTT::reconnectMQTT(void) {
   String clientId = "esp32-client-" + String(random(0xffff), HEX);
   int entry = 0;
-  while (!client.connected() && entry < 1) {
+  while (!client.connected() && entry < 3) {
     Serial.print("Attempting MQTT connection...");
     if (client.connect(clientId.c_str())) {
       Serial.println("MQTT connected");
@@ -84,4 +84,9 @@ void MQTT::mqttCallback(char *topic, byte *payload, unsigned int length) {
 
 void MQTT::setMessageHandler(MQTTMessageHandler handler) {
   userMessageHandler = handler;
+}
+
+void MQTT::publishMessage(const char* publish_topic, const char* message) {
+  mqtt_pub_topic = publish_topic;
+  client.publish(mqtt_pub_topic, message);
 }

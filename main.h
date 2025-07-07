@@ -27,6 +27,7 @@ void updateTimeInfo(void);
 void runFilter(void);
 void runSprinkler(void);
 
+void reConfigMQTT();
 void configurationForDog(int type);
 void handleMQTTSettings(const JsonDocument &doc);
 

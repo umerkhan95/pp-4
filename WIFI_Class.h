@@ -23,6 +23,8 @@ public:
   static void ConnectWifi(void);
   static void DisconnectWifi(void);
   static bool getWifiStatus() { return statusWifi; }
+  static String getMacAddress();
+  static void wifiConnectedCallback(void (*func) ());
 };
 
 

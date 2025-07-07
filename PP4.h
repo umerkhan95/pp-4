@@ -3,7 +3,7 @@
 #include <Arduino.h>
 // #define DEBUG
 
-#define VERSION "v2.7.0"
+#define VERSION "v4.7.0"
 
 // Định nghĩa hằng số
 #define MINUTE 60
@@ -42,13 +42,19 @@ typedef enum {
   SMALL_DOG = 1,
   MEDIUM_DOG,
   LARGE_DOG
-} Dog_type_t;
+} Dog_type;
 
 typedef enum {
-  TIMER_IDLE = 0,
-  TIMER_DEFAULT,
-  TIMER_NORMAL
-} Timer_state_t;
+  FILTER_DURATION_SMALL_DOG = 2,
+  FILTER_DURATION_MEDIUM_DOG,
+  FILTER_DURATION_LARGE_DOG
+} Filter_duration;
+
+typedef enum {
+  SPRINKLER_DURATION_SMALL_DOG = 4,
+  SPRINKLER_DURATION_MEDIUM_DOG,
+  SPRINKLER_DURATION_LARGE_DOG = 7
+} Sprinkler_duration;
 
 
 #endif //_PP4_H_

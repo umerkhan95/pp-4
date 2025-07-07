@@ -20,5 +20,6 @@ public:
   static void MQTT_init(const char* publish_topic, const char* subscribe_topic, const char* broker, const int port);
   // Gán callback xử lý nội dung JSON
   static void setMessageHandler(MQTTMessageHandler handler);
+  void publishMessage(const char* publish_topic, const char* message);
 };
 #endif //_MQTT_H_

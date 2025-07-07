@@ -14,7 +14,16 @@ TaskHandle_t WIFI::loopWebPortalTaskHandle = NULL;
 
 void WIFI::ConnectWifi(void) {
   wm.setConfigPortalBlocking(false);
-  statusWifi = wm.autoConnect("AutoConnectAP", "12345678");
+  String address = WIFI::getMacAddress();
+
+
+  String AP_SSID = "Porch-Potty-";
+  AP_SSID += address[address.length() - 5];
+  AP_SSID += address[address.length() - 4];
+  AP_SSID += address[address.length() - 2];
+  AP_SSID += address[address.length() - 1];
+
+  statusWifi = wm.autoConnect(AP_SSID.c_str(), NULL);
 
   if (checkWifiTaskHandle == NULL) 
     xTaskCreate(check_wifi_connection, "Task check wifi", 4096, NULL, 3, &(checkWifiTaskHandle));
@@ -107,4 +116,12 @@ void WIFI::loop_webPortal(void *param) {
 
     vTaskDelay(pdMS_TO_TICKS(100));
   }
+}
+
+String WIFI::getMacAddress() {
+  return WiFi.macAddress();
+}
+
+void WIFI::wifiConnectedCallback(void (*func) ()) {
+  wm.setSaveConfigCallback(func);
 }
