@@ -1,9 +1,9 @@
 #ifndef _PP4_H_
 #define _PP4_H_
 #include <Arduino.h>
-#define DEBUG
+// #define DEBUG
 
-#define VERSION "v16.7.0"
+#define VERSION "v23.7.0"
 #define MQTT_TOPIC_MAX_LEN 80
 
 // Định nghĩa hằng số
