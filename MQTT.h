@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
 
+
 typedef void (*MQTTMessageHandler)(const JsonDocument &doc);
 
 class MQTT {
@@ -17,9 +18,11 @@ private:
   static MQTTMessageHandler userMessageHandler;
 
 public:
-  static void MQTT_init(const char* publish_topic, const char* subscribe_topic, const char* broker, const int port);
+  static void MQTT_init(const char* broker, const int port, const char* username, const char* password);
   // Gán callback xử lý nội dung JSON
   static void setMessageHandler(MQTTMessageHandler handler);
   void publishMessage(const char* publish_topic, const char* message);
+  bool subscribeTopic(const char* subscribe_topic);
+  
 };
 #endif //_MQTT_H_

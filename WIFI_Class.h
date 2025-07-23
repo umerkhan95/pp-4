@@ -1,30 +1,41 @@
 #ifndef _WIFI_H_
 #define _WIFI_H_
 
-#include <Arduino.h>
 
-#define DEFAULT_SCAN_LIST_SIZE 10
-#define WIFI_AP_SSID_LEN DEFAULT_SCAN_LIST_SIZE * 33
-#define CHAR_SEPARATE_SSID_STR "|"
+#include <WiFi.h>
+#include "BLE_Class.h"
+#include "esp_mac.h"
+#include <nvs_flash.h>
+
+#define MAX_WIFI_SSID_LEN 32
+#define MAX_WIFI_PASS_LEN 64
+#define MAX_WIFI_LIST_LEN 330
+
+struct wifi_credential_t {
+  char ssid[MAX_WIFI_SSID_LEN];
+  char pass[MAX_WIFI_PASS_LEN];
+};
 
 class WIFI {
-private:
-  static TaskHandle_t checkWifiTaskHandle;
-  static TaskHandle_t loopWebPortalTaskHandle;
-  static void check_wifi_connection(void* param);
-  static void taskScanWifi(void* param);
-  static void loop_webPortal(void *param);
-
 public:
-  static bool statusWifi;
-  static char ssid_list[WIFI_AP_SSID_LEN];
+  static void init();
+  static void connect();
+  static void disconnect();
 
-  static void wifi_scan_handle(void);
-  static void ConnectWifi(void);
-  static void DisconnectWifi(void);
-  static bool getWifiStatus() { return statusWifi; }
+  static void setConnectedCallback(void (*cb)());
   static String getMacAddress();
-  static void wifiConnectedCallback(void (*func) ());
+
+private:
+  static void scanAndSendAPs(char* ap_list);
+  static void handleBLECommand();
+  static bool parseWiFiCommand(const char* input, char* ssid, char* pass);
+  static bool loadFromNVS(const char* key, char* out, size_t len);
+  static void saveToNVS(const char* key, const char* val);
+
+  static bool isConnected;
+  static wifi_credential_t credentials;
+  static TaskHandle_t wifiTaskHandle;
+  static void (*connectedCallback)();
 };
 
 
