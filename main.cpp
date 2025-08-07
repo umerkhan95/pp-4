@@ -386,7 +386,7 @@ void testFunction_viaSerial(void *param) {
     Serial.println("Tick value now: " + String(tickSecond));
     Serial.println("nextTickPeriod: " + String(nextTickPeriod));
     Serial.println("Timer one shot tick: " + String(timerRead(countToStartTimer)));
-    // mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), String(tickSecond));
+    mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), String(tickSecond));
     if (Serial.available()) {
       String rec = Serial.readStringUntil('\n');
       Serial.println("Received value: " + rec);
