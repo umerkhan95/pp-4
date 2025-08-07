@@ -6,6 +6,7 @@
 #include "BLE_Class.h"
 #include "esp_mac.h"
 #include <nvs_flash.h>
+#include <Arduino.h>
 
 #define MAX_WIFI_SSID_LEN 32
 #define MAX_WIFI_PASS_LEN 64
@@ -24,6 +25,8 @@ public:
 
   static void setConnectedCallback(void (*cb)());
   static String getMacAddress();
+  static bool hasWiFiSSID;
+  static bool hasWiFiPass;
 
 private:
   static void scanAndSendAPs(char* ap_list);

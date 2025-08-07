@@ -3,25 +3,17 @@
 
 #include "PP4.h"
 #include "WIFI_Class.h"
-#include "MQTT.h"
+// #include "MQTT.h"
 #include "driver/timer.h"
 #include "time.h"
-// #include <Wire.h>
-#include <nvs_flash.h>
+// #include "POST_GET.h"
+// #include <nvs_flash.h>
 
-
-typedef enum {
-  SPRINKLER_AUTO,
-  SPRINKLER_MANUAL,
-  FILTER_AUTO,
-  FILTER_MANUAL,
-  TYPE_DOG,
-  WATER_LEVEL,
-  TOPIC_COUNT
-} mqtt_topic_id_t;
-
+void loadConfiguration(void);
 void writeValueToNVS(const char* key, int16_t value);
+void writeValueToNVS(const char* key, String value);
 int16_t readValueFromNVS(const char* key);
+String readStringFromNVS(const char* key);
 void saveDaysToNVS(int *days);
 bool readDaysFromNVS(int *days);
 void saveTimeToNVS(time_t time);
@@ -40,22 +32,17 @@ void updateTimeInfo(void);
 void runFilter(void);
 void runSprinkler(void);
 
-void reConfigMQTT();
-void configurationForDog(int type);
-void handleDogTypeConfiguration(int type);
-void handleManualControls(const JsonDocument &doc);
-void handleDurationSettings(const JsonDocument &doc);
-void handleActiveDays(const JsonDocument &doc);
-void handleStartTime(const JsonDocument &doc);
-void handleTimeSync(const JsonDocument &doc);
-void handleMQTTSettings(const JsonDocument &doc);
-void mqtt_publish_message(int topic_id, const char *mac_id, String message);
-void mqtt_subscribe(int topic_id, const char *mac_id);
 
+void configurationForDog(int type);
+void loginAndGetToken(void);
+void getDeviceStatus(void);
+
+void taskPOSTGET(void *param);
 void taskUpdateTime(void *param);
 void taskSaveSettings(void *param);
 void taskAuto(void *pvParameters);
 void taskManual(void *param);
+
 void getTime(void *param);
 void stopAllTimers();
 void initializeNewTimers(int currentSec, int startSec);

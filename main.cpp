@@ -3,7 +3,8 @@
 #include "main.h"
 // ============================================================CLASS OBJECT============================================================
 WIFI _wifi;
-MQTT _mqtt;
+// MQTT _mqtt;
+POSTGET _httpClient;
 // ====================================================================================================================================
 
 // =============================================================GLOBAL VAR=============================================================
@@ -18,10 +19,21 @@ bool hasNewSettings = false; // Flag to track if new settings have been received
 bool isTimeInitialized = false; // Flag to track if time has been initialized
 bool isTimeSyncedFromApp = false; // Flag to track if time has been synced from app
 
-const char* PP4_MQTT_BROKER = "broker.emqx.io";
-const int PP4_MQTT_PORT = 8883;
-const char* PP4_MQTT_USERNAME = "porch-potty_4";
-const char* PP4_MQTT_PASSWORD = "porch-potty_4";
+const char* loginUrl = "https://porchpotty.codefied.co/api/login.php";
+const char* updateStatusUrl = "https://porchpotty.codefied.co/api/update_device_status.php";
+const char* getStatusUrl = "https://porchpotty.codefied.co/api/get_device_status.php";
+const char* getScheduleUrl = "https://porchpotty.codefied.co/api/get_sprinkler_schedule.php";
+String jwtToken = "";
+String user_email = "";
+String user_password = "";
+String device_id = "";
+bool isConfigured = false;
+
+uint32_t lastTokenRefresh;
+uint32_t lastPost;
+uint32_t lastStatusCheck;
+uint32_t lastScheduleCheck;
+uint32_t currentMillis;
 
 hw_timer_t *cycleTimer = NULL;
 hw_timer_t *countToStartTimer = NULL;
@@ -43,7 +55,7 @@ int currentSprinklerCycle = 0;
 int lastRunDay = -1;
 String macAddress;
 
-typedef void (*MQTTReconnectFunc) ();
+// typedef void (*MQTTReconnectFunc) ();
 
 SemaphoreHandle_t timerMux = NULL;
 // SemaphoreHandle_t settingsMux = NULL;
@@ -54,6 +66,10 @@ TaskHandle_t manualTaskHandle;
 // ====================================================================================================================================
 
 // ===============================================================SETUP================================================================
+/**
+ * @brief Initialize the system
+ * 
+ */
 void Setup() {
   Serial.begin(115200);
   Serial.println("VERSION: " + String(VERSION));
@@ -76,125 +92,18 @@ void Setup() {
   ledcAttach(SPRINKLER_PIN, PWM_FREQ, PWM_RESOLUTION);
   ledcWrite(SPRINKLER_PIN, 255);
   //====================================FLASH====================================
-  esp_err_t err = nvs_flash_init();
-  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
-    ESP_ERROR_CHECK(nvs_flash_erase());
-    err = nvs_flash_init();
-  }
-  ESP_ERROR_CHECK(err);
-
-  // Read hasNewSettings from NVS
-  // hasNewSettings = readValueFromNVS("has_settings") != 0;
-  hasNewSettings = false;
-  writeValueToNVS("has_settings", 0);
-
-  //Sprinkler duration
-  _sprinkler.duration = readValueFromNVS("ds");
-  if (_sprinkler.duration == 0 || !hasNewSettings) {
-#ifndef DEBUG
-    _sprinkler.duration = 4;
-#else
-    _sprinkler.duration = 1;
-#endif
-    writeValueToNVS("ds", _sprinkler.duration);
-  }
-  // Filter duration
-  _filter.duration = readValueFromNVS("df");
-  if (_filter.duration == 0 || !hasNewSettings) {
-#ifndef DEBUG
-    _filter.duration = 4;
-#else
-    _filter.duration = 1;
-#endif
-    writeValueToNVS("df", _filter.duration);
-  }
-
-  _sprinkler.cyclesInDay = readValueFromNVS("cycles");
-  if (_sprinkler.cyclesInDay == 0 || !hasNewSettings) {
-    _sprinkler.cyclesInDay = 1;
-    writeValueToNVS("cycles", 1);
-  }
-
-  Serial.println("Days: ");
-  // if (readDaysFromNVS(_timeSys.days)) {
-  //   for (int i = 0; i < 7; i++) {
-  //     Serial.print(_timeSys.days[i]);
-  //     if (i < 6) Serial.print(", ");
-  //   }
-  // }
-  // else {
-  //   for (int i = 0; i < 7; i++) {
-  //     _timeSys.days[i] = 0;
-  //     Serial.print(_timeSys.days[i]);
-  //     if (i < 6) Serial.print(", ");
-  //   }
-  // }
-  // Serial.println();
-  if (!readDaysFromNVS(_timeSys.days) || !hasNewSettings) {
-    for (int i = 0; i < 7; i++) {
-      _timeSys.days[i] = 1; // Chạy tất cả các ngày
-    }
-    saveDaysToNVS(_timeSys.days);
-  }
-
-  _timeSys.firstTime = 1;
-  _timeSys.period = 24 / _sprinkler.cyclesInDay;
-  startMinuteSprinkler = start_time_sprinkler[0] * 60 + start_time_sprinkler[1]; // 0 phút (0:00)
-
-  currentSprinklerCycle = 0;
-  // nextTickPeriod = start_time_sprinkler[0] * 3600 + start_time_sprinkler[1] * 60 +  currentSprinklerCycle * _timeSys.period * HOUR;
-  nextTickPeriod = currentSprinklerCycle * _timeSys.period * HOUR;
-  
-  // Read time from NVS
-  // time_t savedTime = readTimeFromNVS();
-  // if (savedTime > 0) {
-  //   struct tm *tmTime = localtime(&savedTime);
-  //   if (tmTime) {
-  //     currentTime = *tmTime;
-  //     isTimeInitialized = true;
-  //     tickSecond = (currentTime.tm_hour * 3600 + currentTime.tm_min * 60 + currentTime.tm_sec) - (start_time_sprinkler[0] * 3600 + start_time_sprinkler[1] * 60); // Đồng bộ tickSecond với thời gian thực
-  //     if (tickSecond < 0) {
-  //       tickSecond += 24 * 3600; // Xử lý thời gian hiện tại trước 0:00
-  //     }
-  //     lastProcessedTimeSync = tickSecond;
-  //     Serial.println("Time restored from NVS: ");
-  //     Serial.println(&currentTime, "%A, %B %d %Y %H:%M:%S");
-  //     Serial.println("Tick second in setting: " + String(tickSecond));
-  //   }
-  // }
-
-  
-
-  // Show settings in NVS
-  Serial.println("===========================SETTING===========================");
-  Serial.println("Sprinkler Duration: " + String(_sprinkler.duration)+" Minute");
-  Serial.println("Filter Duration: " + String(_filter.duration) + " Hour");
-  Serial.println("Sprinkler Cycles: " + String(_sprinkler.cyclesInDay));
-  Serial.println("Has New Settings: " + String(hasNewSettings));
-  Serial.println("Start time: " + String(start_time_sprinkler[0]) + ":" + String(start_time_sprinkler[1]));
-  Serial.println("next tick period in setup: " + String(nextTickPeriod));
-  Serial.println("=============================================================");
+  loadConfiguration();
   //====================================WI-FI & MQTT====================================
   // _wifi.wifi_scan_handle();
   // _wifi.ConnectWifi();
   _wifi.init();
+  delay(2000);
   macAddress = _wifi.getMacAddress();
   Serial.println("MAC Address: " + macAddress);
 
-  MQTTReconnectFunc reconnect_handler = reConfigMQTT; // function pointer point to function reConfigMQTT()
-  _wifi.setConnectedCallback(reconnect_handler);
-
-  if (WiFi.status() == WL_CONNECTED) {
-    //====================================MQTT====================================
-    _mqtt.MQTT_init(PP4_MQTT_BROKER, PP4_MQTT_PORT, PP4_MQTT_USERNAME, PP4_MQTT_PASSWORD);
-    vTaskDelay(pdMS_TO_TICKS(500));
-    for (int i = 0; i < TOPIC_COUNT - 1; i++) {
-      mqtt_subscribe(i, macAddress.c_str());
-      vTaskDelay(pdMS_TO_TICKS(500));
-    }
-    //====================================TIME====================================
-  }
-  _mqtt.setMessageHandler(handleMQTTSettings);
+  // MQTTReconnectFunc reconnect_handler = reConfigMQTT; // function pointer point to function reConfigMQTT()
+  // _wifi.setConnectedCallback(reconnect_handler);
+  // _mqtt.setMessageHandler(handleMQTTSettings);
   Serial.println("Period: " + String(_timeSys.period * HOUR));
   startTimer(&timer_itr, &cycleTimer, 1); // timer count every 1 second
   //====================================TASKS====================================
@@ -202,8 +111,11 @@ void Setup() {
   xTaskCreate(taskManual, "Manual Task", 4096, NULL, 5, &manualTaskHandle);
   xTaskCreate(taskSaveSettings, "Task Save Settings", 4096, NULL, 2, &saveSettingsTaskHandle);
   xTaskCreate(taskUpdateTime, "Update Time Task", 2048, NULL, 3, NULL);
+  xTaskCreate(taskPOSTGET, "POST GET Task", 8192, NULL, 4, NULL);
 #ifdef DEBUG
-  xTaskCreate(testFunction_viaSerial, "Test Serial", 4096, NULL, 4, NULL);
+  Serial.println("11Initialized testFunction task==============================================");
+  xTaskCreate(testFunction_viaSerial, "Test Serial", 4096, NULL, 6, NULL);
+  Serial.println("Initialized testFunction task==============================================");
 #endif
   //=====================================END=====================================
   Serial.println("End setup.");
@@ -215,7 +127,43 @@ void Loop() {
 }
 
 // ==============================================================TASKS================================================================
+/**
+ * @brief Task to handle POST and GET requests
+ * 
+ * This task periodically checks for updates, refreshes the JWT token, and retrieves device status.
+ */
+void taskPOSTGET(void *param) {
+  for (;;) {
+    if (WiFi.status() != WL_CONNECTED) {
+      _wifi.connect();
+      continue;
+    }
+
+    currentMillis = millis();
+    Serial.println(currentMillis);
+
+    // Refresh token periodically
+    if (currentMillis - lastTokenRefresh > TOKEN_REFRESH_INTERVAL) {
+      Serial.println("Refreshing token...");
+      loginAndGetToken();
+      lastTokenRefresh = currentMillis;
+    }
+
+    // Check for pump commands from server
+    if (currentMillis - lastStatusCheck > STATUS_CHECK_INTERVAL) {
+      Serial.println("Get Pumps status...");
+      getDeviceStatus();
+      lastStatusCheck = currentMillis;
+    }
+  }
+}
+
 // Task to update time every minute
+/**
+ * @brief Task to update time every minute
+ * 
+ * This task checks if the time is initialized and updates the time information.
+ */
 void taskUpdateTime(void *param) {
   for (;;) {
     if (isTimeInitialized) {
@@ -226,6 +174,11 @@ void taskUpdateTime(void *param) {
 }
 
 // Task save settings received via MQTT Broker
+/**
+ * @brief Task to save settings received via MQTT Broker
+ * 
+ * This task waits for notifications to save settings to NVS.
+ */
 void taskSaveSettings(void *param) {
   for (;;) {
     ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -246,6 +199,11 @@ void taskSaveSettings(void *param) {
 }
 
 // Task run pumps automatically
+/**
+ * @brief Task to run pumps automatically based on the schedule
+ * 
+ * This task checks the current time and runs the sprinkler and filter pumps according to the configured schedule.
+ */
 void taskAuto(void *param) {
   for (;;) {
     // Chờ thông báo từ ISR hoặc timeout sau 1 giây để kiểm tra thời gian
@@ -296,7 +254,6 @@ void taskAuto(void *param) {
 
       if (!isMotorRunning && !_sprinkler.manual) {
         Serial.println("Sprinkler running auto");
-        mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), "Sprinkler running auto");
         _sprinkler.autoControl = true;
         runSprinkler();
         _sprinkler.autoControl = false;
@@ -305,11 +262,9 @@ void taskAuto(void *param) {
         nextTickPeriod = currentSprinklerCycle * _timeSys.period * HOUR; // 0:00 ngày tiếp theo
       }
     }
-    Serial.println("Before checking filter run condition...");
     if (isTimeInitialized && minuteNow >= startMinuteSprinkler && !filterDoneToday && !_filter.manual && !isMotorRunning) {
       if (sprinklerJustFinished || _timeSys.days[wday] == 0) {
         sprinklerJustFinished = false;
-        mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), "Filter running auto");
         runFilter();
       }
     }
@@ -330,29 +285,43 @@ void taskAuto(void *param) {
 
 // Task run pumps manually
 // Need to change logic run (PWM increase & decrease continuously)
+/**
+ * @brief Task to run pumps manually
+ * 
+ * This task checks the manual control flags from the app and runs the sprinkler and filter pumps accordingly.
+ */
 void taskManual(void *param) {
   for (;;) {
-    ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-    
-    isManualRunning = false; // default set to false, be true if there is a SPRINKLER_PIN on
+    // ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+    if (_sprinkler.autoControl || _filter.autoControl) {
+      // Serial.println("Auto control is ON, continue");
+      continue;
+    }
+    // isManualRunning = false; // default set to false, be true if there is a SPRINKLER_PIN on
 
     // Check and control Sprinkler - Yellow LED
     if (_sprinkler.manual == 1 && !isMotorRunning) {
       Serial.println("Manual Sprinkler ON");
       isMotorRunning = true;
       isManualRunning = true;
-      digitalWrite(LED_GREEN_PIN, LOW);
-      digitalWrite(LED_RED_PIN, LOW);
-      digitalWrite(LED_BLUE_PIN, HIGH);
-      // Increase gradually PWM for Sprinkler in ~5s
-      ledcFade(SPRINKLER_PIN, 255, 0, 5000);
+      digitalWrite(LED_GREEN_PIN, HIGH);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, LOW);
+      Serial.println("PWM increase");
+      ledcFade(SPRINKLER_PIN, 200, 0, 2000);
+      vTaskDelay(pdMS_TO_TICKS(2000));
+
+      vTaskDelay(pdMS_TO_TICKS(2000));
+
+      Serial.println("PWM decrease");
+      ledcFade(SPRINKLER_PIN, 0, 200, 2000);
+      vTaskDelay(pdMS_TO_TICKS(2000));
     } else if (_sprinkler.manual == 0) {
       Serial.println("Manual Sprinkler OFF");
       // Decrease gradually PWM for Sprinkler in ~5s
-      ledcFade(SPRINKLER_PIN, 0, 255, 5000);
-      digitalWrite(LED_GREEN_PIN, HIGH);
-      digitalWrite(LED_RED_PIN, HIGH);
-      digitalWrite(LED_BLUE_PIN, HIGH);
+      ledcFade(SPRINKLER_PIN, 0, 255, 2000);
+      vTaskDelay(pdMS_TO_TICKS(2000));
+      digitalWrite(SPRINKLER_PIN, HIGH);
     }
 
     // Check and control Filter - Purple LED
@@ -361,32 +330,39 @@ void taskManual(void *param) {
       isMotorRunning = true;
       isManualRunning = true;
       digitalWrite(FILTER_PIN, HIGH); // Turn ON FILTER_PIN
-      digitalWrite(LED_GREEN_PIN, HIGH);
-      digitalWrite(LED_RED_PIN, LOW);
-      digitalWrite(LED_BLUE_PIN, LOW);
+      digitalWrite(LED_GREEN_PIN, LOW);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, HIGH);
     } else if (_filter.manual == 0) {
       Serial.println("Manual Filter OFF");
       digitalWrite(FILTER_PIN, LOW); // Turn OFF FILTER_PIN
-      digitalWrite(LED_GREEN_PIN, HIGH);
-      digitalWrite(LED_RED_PIN, HIGH);
-      digitalWrite(LED_BLUE_PIN, HIGH);
     }
 
     // Update isMotorRunning & isManualRunning
     isMotorRunning = (_sprinkler.manual == 1 || _filter.manual == 1);
-    isManualRunning = isMotorRunning; // isManualRunning be true if there is a SPRINKLER_PIN ON
+    if (!isMotorRunning) {
+      digitalWrite(LED_GREEN_PIN, HIGH);
+      digitalWrite(LED_RED_PIN, HIGH);
+      digitalWrite(LED_BLUE_PIN, HIGH);
+    }
+    isManualRunning = false; // isManualRunning be true if there is a SPRINKLER_PIN ON
   }
 }
 
 #ifdef DEBUG
 static uint8_t isNextDay = false;
 // Task to simulate new day via Serial input
+/**
+ * @brief Task to simulate new day via Serial input
+ *
+ * This task reads time input from Serial and updates the current time accordingly for debugging.
+ */
 void testFunction_viaSerial(void *param) {
   for (;;) {
     Serial.println("Tick value now: " + String(tickSecond));
     Serial.println("nextTickPeriod: " + String(nextTickPeriod));
     Serial.println("Timer one shot tick: " + String(timerRead(countToStartTimer)));
-    mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), String(tickSecond));
+    // mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), String(tickSecond));
     if (Serial.available()) {
       String rec = Serial.readStringUntil('\n');
       Serial.println("Received value: " + rec);
@@ -480,12 +456,106 @@ void testFunction_viaSerial(void *param) {
 }
 #endif
 // ===========================================================FLASH FUNCTIONs===========================================================
+// Load Saved Configuration in NVS
+/**
+ * @brief Load configuration from NVS
+ * 
+ * This function initializes the NVS and reads the saved configuration values.
+ */
+void loadConfiguration(void) {
+  esp_err_t err = nvs_flash_init();
+  if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+    ESP_ERROR_CHECK(nvs_flash_erase());
+    err = nvs_flash_init();
+  }
+  ESP_ERROR_CHECK(err);
+
+  // Read hasNewSettings from NVS
+  // hasNewSettings = readValueFromNVS("has_settings") != 0;
+  hasNewSettings = false;
+  writeValueToNVS("has_settings", 0);
+
+  //Sprinkler duration
+  _sprinkler.duration = readValueFromNVS("ds");
+  if (_sprinkler.duration == 0 || !hasNewSettings) {
+#ifndef DEBUG
+    _sprinkler.duration = 4;
+#else
+    _sprinkler.duration = 1;
+#endif
+    writeValueToNVS("ds", _sprinkler.duration);
+  }
+  // Filter duration
+  _filter.duration = readValueFromNVS("df");
+  if (_filter.duration == 0 || !hasNewSettings) {
+#ifndef DEBUG
+    _filter.duration = 4;
+#else
+    _filter.duration = 1;
+#endif
+    writeValueToNVS("df", _filter.duration);
+  }
+
+  _sprinkler.cyclesInDay = readValueFromNVS("cycles");
+  if (_sprinkler.cyclesInDay == 0 || !hasNewSettings) {
+    _sprinkler.cyclesInDay = 1;
+    writeValueToNVS("cycles", 1);
+  }
+
+  Serial.println("Days: ");
+  if (!readDaysFromNVS(_timeSys.days) || !hasNewSettings) {
+    for (int i = 0; i < 7; i++) {
+      _timeSys.days[i] = 1; // Chạy tất cả các ngày
+    }
+    saveDaysToNVS(_timeSys.days);
+  }
+
+  _timeSys.firstTime = 1;
+  _timeSys.period = 24 / _sprinkler.cyclesInDay;
+  startMinuteSprinkler = start_time_sprinkler[0] * 60 + start_time_sprinkler[1]; // 0 phút (0:00)
+
+  currentSprinklerCycle = 0;
+  nextTickPeriod = currentSprinklerCycle * _timeSys.period * HOUR;
+  
+  user_email = readStringFromNVS("user_email");
+  user_password = readStringFromNVS("user_pw");
+  device_id = readStringFromNVS("device_id");
+
+  // nếu cần fallback:
+  user_email = user_email.length() ? user_email : "";
+  user_password = user_password.length() ? user_password : "";
+  device_id = device_id.length() ? device_id : "1";
+
+  if (_wifi.hasWiFiSSID && _wifi.hasWiFiPass) {
+    isConfigured = true;
+  }
+  
+
+  // Show settings in NVS
+  Serial.println("===========================SETTING===========================");
+  Serial.println("Sprinkler Duration: " + String(_sprinkler.duration)+" Minute");
+  Serial.println("Filter Duration: " + String(_filter.duration) + " Hour");
+  Serial.println("Sprinkler Cycles: " + String(_sprinkler.cyclesInDay));
+  Serial.println("Has New Settings: " + String(hasNewSettings));
+  Serial.println("Start time: " + String(start_time_sprinkler[0]) + ":" + String(start_time_sprinkler[1]));
+  Serial.println("next tick period in setup: " + String(nextTickPeriod));
+  Serial.println("User email: " + user_email);
+  Serial.println("User password: " + user_password);
+  Serial.println("=============================================================");
+}
+
 // Read flash
+/**
+ * @brief Read an integer value from NVS
+ * 
+ * @param key The key to read the value from
+ * @return int16_t The value read from NVS, or 0 if not found
+ */
 int16_t readValueFromNVS(const char* key) {
   nvs_handle my_handle;
   esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
   if (err != ESP_OK) {
-    Serial.println("Không thể mở NVS!");
+    Serial.println("Failed to open NVS!");
   }
 
   int16_t value = 0;
@@ -495,7 +565,42 @@ int16_t readValueFromNVS(const char* key) {
   return value;
 }
 
+/**
+ * @brief Read a string value from NVS
+ * 
+ * @param key The key to read the string from
+ * @return String The string value read from NVS, or an empty string if not found
+ */
+String readStringFromNVS(const char* key) {
+  nvs_handle handle;
+  if (nvs_open("storage", NVS_READONLY, &handle) != ESP_OK) {
+    Serial.println("Failed to open NVS!");
+    return "";
+  }
+
+  size_t len = 0;
+  if (nvs_get_str(handle, key, NULL, &len) != ESP_OK || len == 0) {
+    nvs_close(handle);
+    return "";
+  }
+
+  char value[len];
+  if (nvs_get_str(handle, key, value, &len) != ESP_OK) {
+    nvs_close(handle);
+    return "";
+  }
+
+  nvs_close(handle);
+  return String(value);
+}
+
 // Write flash
+/**
+ * @brief Write an integer value to NVS
+ * 
+ * @param key The key to write the value to
+ * @param value The integer value to write
+ */
 void writeValueToNVS(const char* key, int16_t value) {
   nvs_handle my_handle;
   esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
@@ -509,7 +614,31 @@ void writeValueToNVS(const char* key, int16_t value) {
   nvs_close(my_handle);
 }
 
+/**
+ * @brief Write a string value to NVS
+ * 
+ * @param key The key to write the string to
+ * @param value The string value to write
+ */
+void writeValueToNVS(const char* key, String value) {
+  nvs_handle my_handle;
+  esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
+
+  err = nvs_set_str(my_handle, key, value.c_str());
+  ESP_ERROR_CHECK(err);
+
+  err = nvs_commit(my_handle);
+  ESP_ERROR_CHECK(err);
+
+  nvs_close(my_handle);
+}
+
 // Save scheduled days to flash
+/**
+ * @brief Save scheduled days to NVS
+ * 
+ * @param days Pointer to an array of integers representing the days of the week
+ */
 void saveDaysToNVS(int *days) {
   nvs_handle_t handle;
   esp_err_t err = nvs_open("storage", NVS_READWRITE, &handle);
@@ -523,6 +652,12 @@ void saveDaysToNVS(int *days) {
 }
 
 // Get scheduled days to flash
+/**
+ * @brief Read scheduled days from NVS
+ * 
+ * @param days Pointer to an array of integers where the days will be stored
+ * @return bool True if read successfully, false otherwise
+ */
 bool readDaysFromNVS(int *days) {
   nvs_handle_t handle;
   size_t required_size = sizeof(int) * 7;
@@ -536,6 +671,11 @@ bool readDaysFromNVS(int *days) {
 }
 
 // Save time to NVS
+/**
+ * @brief Save the current time to NVS
+ * 
+ * @param time The time to save, in seconds since epoch
+ */
 void saveTimeToNVS(time_t time) {
   nvs_handle my_handle;
   esp_err_t err = nvs_open("storage", NVS_READWRITE, &my_handle);
@@ -550,6 +690,11 @@ void saveTimeToNVS(time_t time) {
 }
 
 // Read time from NVS
+/**
+ * @brief Read the saved time from NVS
+ * 
+ * @return time_t The saved time, or 0 if not found
+ */
 time_t readTimeFromNVS() {
   nvs_handle my_handle;
   esp_err_t err = nvs_open("storage", NVS_READONLY, &my_handle);
@@ -566,6 +711,11 @@ time_t readTimeFromNVS() {
 
 // ===========================================================TIME FUNCTIONs===========================================================
 // get current time from NTP server
+/**
+* @brief Set the current time from a string
+* 
+* @param timeString The time string to parse
+ */
 void setCurrentTime(const char *timeString) {
   if (timeString != NULL) {
     struct tm tmTime;
@@ -602,6 +752,13 @@ void setCurrentTime(const char *timeString) {
 }
 
 // on timer for counting tick second
+/**
+ * @brief Start a timer with a specified function and period
+ * 
+ * @param func The function to call when the timer expires
+ * @param timer Pointer to the timer handle
+ * @param period The period in seconds for the timer
+ */
 void startTimer(void (*func)(), hw_timer_t **timer, uint32_t period) {
   *timer = timerBegin(TIMER_FREQ);                         // Frequency: 1MHz
   timerAttachInterrupt(*timer, func);                      // Attach interrupt function
@@ -609,6 +766,11 @@ void startTimer(void (*func)(), hw_timer_t **timer, uint32_t period) {
 }
 
 // Stop timer
+/**
+ * @brief Stop a timer and detach its interrupt
+ * 
+ * @param timer Pointer to the timer handle
+ */
 void stopTimer(hw_timer_t **timer) {
   if (*timer != NULL) {
     timerDetachInterrupt(*timer);
@@ -618,6 +780,10 @@ void stopTimer(hw_timer_t **timer) {
 }
 
 // Interrupt function for one-shot timer to start cycle
+/**
+ * @brief Interrupt function for one-shot timer to start cycle
+ * 
+ */
 void IRAM_ATTR countToStartTimer_itr() {
   stopTimer(&countToStartTimer);
   stopTimer(&tickTimer); // Stop tickTimer when countToStartTimer ends
@@ -631,11 +797,21 @@ void IRAM_ATTR countToStartTimer_itr() {
 }
 
 // Interrupt function for tickTimer to increment tickSecond
+/**
+ * @brief Interrupt function for tickTimer to increment tickSecond when one-shot timer running
+ * 
+ */
 void IRAM_ATTR tickTimer_itr() {
   // tickSecond++;
   tickSecond = (tickSecond + 1) % (24 * HOUR);
 }
 
+// Interrupt function for cycle timer to handle time ticks
+/**
+ * @brief Interrupt function for cycle timer to handle time ticks
+ * 
+ * This function is called every second to update the tickSecond and check for new day or sprinkler cycles.
+ */
 void IRAM_ATTR timer_itr() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   tickSecond++;
@@ -666,6 +842,11 @@ void IRAM_ATTR timer_itr() {
 }
 
 // Function for updating time information
+/**
+ * @brief Update the current time information
+ * 
+ * This function updates the current time based on the tickSecond and saves it to NVS.
+ */
 void updateTimeInfo(void) {
   static int lastWday = -1;
   static time_t rawTime;
@@ -696,11 +877,14 @@ void updateTimeInfo(void) {
 
   char currentTime_str[64];
   strftime(currentTime_str, sizeof(currentTime_str), "%A, %B %d %Y %H:%M:%S", &currentTime);
-  mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), currentTime_str);
-  mqtt_publish_message(WATER_LEVEL, macAddress.c_str(), String(nextTickPeriod));
 }
 // =============================================================RUN PUMPS=============================================================
 // Function running Filter pump - Green LED
+/**
+ * @brief Run the filter pump for a specified duration
+ * 
+ * This function turns on the filter pump and runs it for the configured duration.
+ */
 void runFilter(void) {
   isMotorRunning = true;
   _filter.autoControl = true;
@@ -732,6 +916,11 @@ void runFilter(void) {
 }
 
 // Function running Sprinkler pump - Blue LED
+/**
+ * @brief Run the sprinkler pump for a specified duration
+ * 
+ * This function turns on the sprinkler pump and runs it with a PWM fade effect.
+ */
 void runSprinkler(void) {
   isMotorRunning = true;
 
@@ -789,58 +978,13 @@ void runSprinkler(void) {
 }
 
 // =======================================================PROCESS DATA FUNCTIONs=======================================================
-void reConfigMQTT() {
-  Serial.println("==================Re-config MQTT==================");
-  
-  // Tạo task riêng để xử lý MQTT init và subscribe
-  xTaskCreate([](void* parameter) {
-      _mqtt.MQTT_init(PP4_MQTT_BROKER, PP4_MQTT_PORT, PP4_MQTT_USERNAME, PP4_MQTT_PASSWORD);
-      vTaskDelay(pdMS_TO_TICKS(1000));
-      
-      for (int i = 0; i < TOPIC_COUNT - 1; i++) {
-          mqtt_subscribe(i, macAddress.c_str());
-          vTaskDelay(pdMS_TO_TICKS(500));
-      }
-      vTaskDelete(NULL);
-  }, "MQTT_Config", 4096, NULL, 1, NULL);
-}
-
-// void reConfigMQTT() {
-//     Serial.println("==================Re-config MQTT==================");
-    
-//     // Tạo task riêng để xử lý MQTT init và subscribe
-//     xTaskCreate([](void* parameter) {
-//         _mqtt.MQTT_init(PP4_MQTT_BROKER, PP4_MQTT_PORT, PP4_MQTT_USERNAME, PP4_MQTT_PASSWORD);
-        
-//         // Đợi kết nối MQTT thành công (tối đa 15 giây)
-//         int retries = 0;
-//         while (!client.connected() && retries < 15) {
-//             Serial.println("Waiting for MQTT connection...");
-//             vTaskDelay(pdMS_TO_TICKS(1000));
-//             retries++;
-//         }
-
-//         if (client.connected()) {
-//             Serial.println("MQTT connected, starting subscribe...");
-//             vTaskDelay(pdMS_TO_TICKS(500)); // Đợi kết nối ổn định
-            
-//             // Subscribe các topic
-//             for (int i = 0; i < TOPIC_COUNT - 1; i++) {
-//                 if (mqtt_subscribe(i, macAddress.c_str())) {
-//                     Serial.printf("Successfully subscribed to topic %d\n", i);
-//                 } else {
-//                     Serial.printf("Failed to subscribe to topic %d\n", i);
-//                 }
-//                 vTaskDelay(pdMS_TO_TICKS(100)); // Delay giữa các lần subscribe
-//             }
-//         } else {
-//             Serial.println("Failed to connect to MQTT broker, skipping subscribe");
-//         }
-        
-//         vTaskDelete(NULL);
-//     }, "MQTT_Config", 4096, NULL, 1, NULL); // Tăng stack size lên 8KB
-// }
-
+/**
+ * @brief Configure the system based on the type of dog
+ * 
+ * This function sets the filter and sprinkler durations based on the type of dog.
+ * 
+ * @param type The type of dog (SMALL_DOG, MEDIUM_DOG, LARGE_DOG)
+ */
 void configurationForDog(int type){
   if(type == SMALL_DOG){
     _filter.duration = FILTER_DURATION_SMALL_DOG;
@@ -890,374 +1034,68 @@ void configurationForDog(int type){
   }
 }
 
-// Xử lý manual controls
-// void handleManualControls(const JsonDocument &doc) {
-//     if (doc.containsKey("manual_sprinkler")) {
-//         _sprinkler.manual = doc["manual_sprinkler"] | _sprinkler.manual;
-//     }
-    
-//     if (doc.containsKey("manual_filter")) {
-//         _filter.manual = doc["manual_filter"] | _filter.manual;
-//     }
-// }
-
-// // Xử lý các cài đặt thời gian
-// void handleDurationSettings(const JsonDocument &doc) {
-//     if (doc.containsKey("duration_sprinkler")) {
-//         _sprinkler.duration = int(doc["duration_sprinkler"]) | _sprinkler.duration;
-//         Serial.println("Sprinkler duration: " + String(_sprinkler.duration));
-//     }
-    
-//     if (doc.containsKey("duration_filter")) {
-//         _filter.duration = int(doc["duration_filter"]) | _filter.duration;
-//         Serial.println("Filter duration: " + String(_filter.duration));
-//     }
-
-//     if (doc.containsKey("cycles_sprinkler")) {
-//         _sprinkler.cyclesInDay = doc["cycles_sprinkler"] | _sprinkler.cyclesInDay;
-//         Serial.println("Sprinkler cyclesInDay: " + String(_sprinkler.cyclesInDay));
-//     }
-// }
-
-// // Xử lý cài đặt các ngày hoạt động
-// void handleActiveDays(const JsonDocument &doc) {
-//     if (doc.containsKey("active_days") && doc["active_days"].is<JsonArrayConst>()) {
-//         JsonArrayConst daysArray = doc["active_days"].as<JsonArrayConst>();
-//         for (int i = 0; i < 7; i++) {
-//             _timeSys.days[i] = daysArray[i].as<int>();
-//         }
-//     }
-// }
-
-// // Xử lý thời gian bắt đầu
-// void handleStartTime(const JsonDocument &doc) {
-//     if (doc.containsKey("start_time") && doc["start_time"].is<JsonArrayConst>()) {
-//         JsonArrayConst startTimeSprinkler_Array = doc["start_time"].as<JsonArrayConst>();
-//         start_time_sprinkler[0] = startTimeSprinkler_Array[0].as<uint32_t>();
-//         start_time_sprinkler[1] = startTimeSprinkler_Array[1].as<uint32_t>();
-//         startMinuteSprinkler = start_time_sprinkler[0] * 60 + start_time_sprinkler[1];
-//     }
-// }
-
-// // Xử lý đồng bộ thời gian và khởi tạo timer
-// void handleTimeSync(const JsonDocument &doc) {
-//     if (!doc.containsKey("current_time")) return;
-    
-//     String timeString = doc["current_time"].as<String>();
-//     Serial.println("Time string received: " + timeString);
-//     setCurrentTime(timeString.c_str());
-
-//     // Tính toán các thông số thời gian
-//     int currentSec = currentTime.tm_hour * 3600 + currentTime.tm_min * 60 + currentTime.tm_sec;
-//     int startSec = start_time_sprinkler[0] * 3600 + start_time_sprinkler[1] * 60;
-//     _timeSys.period = 24 / _sprinkler.cyclesInDay;
-
-//     // Dừng các timer hiện tại
-//     stopAllTimers();
-
-//     // Khởi tạo timer mới dựa trên thời gian hiện tại
-//     initializeNewTimers(currentSec, startSec);
-// }
-
-// // Dừng tất cả các timer
-// void stopAllTimers() {
-//   portENTER_CRITICAL(&timerMux);
-//   if (countToStartTimer) {
-//       stopTimer(&countToStartTimer);
-//   }
-//   if (cycleTimer) {
-//       stopTimer(&cycleTimer);
-//   }
-//   if (tickTimer) {
-//       stopTimer(&tickTimer);
-//   }
-//   portEXIT_CRITICAL(&timerMux);
-// }
-
-// // Khởi tạo timer mới
-// void initializeNewTimers(int currentSec, int startSec) {
-//     if (currentSec < startSec) {
-//         // Trường hợp 1: Thời gian hiện tại trước thời gian bắt đầu
-//         uint32_t secondsToStart = startSec - currentSec;
-//         startTimer(&tickTimer_itr, &tickTimer, 1);
-//         startTimer(&countToStartTimer_itr, &countToStartTimer, secondsToStart - 5);
-//     } else {
-//         // Trường hợp 2: Thời gian hiện tại sau thời gian bắt đầu
-//         calculateAndSetNextCycle(currentSec, startSec);
-//     }
-// }
-
-// // Tính toán và thiết lập chu kỳ tiếp theo
-// void calculateAndSetNextCycle(int currentSec, int startSec) {
-//     int minutesSinceStart = (currentSec - startSec) / 60;
-//     int periodInMinutes = _timeSys.period * 60;
-//     int cyclesElapsed = minutesSinceStart / periodInMinutes + 1;
-//     int nextCycleMinute = startMinuteSprinkler + (cyclesElapsed) * periodInMinutes;
-//     int currentMinute = currentTime.tm_hour * 60 + currentTime.tm_min;
-//     uint32_t secondsToNextCycle = (nextCycleMinute - currentMinute) * 60;
-
-//     currentSprinklerCycle = cyclesElapsed;
-//     nextTickPeriod = currentSprinklerCycle * _timeSys.period * HOUR;
-
-//     if (cyclesElapsed >= _sprinkler.cyclesInDay) {
-//         secondsToNextCycle += (24 * HOUR - (currentSec % (24 * HOUR)));
-//     }
-
-//     startTimer(&tickTimer_itr, &tickTimer, 1);
-//     startTimer(&countToStartTimer_itr, &countToStartTimer, secondsToNextCycle - 5);
-// }
-
-// void handleDogTypeConfiguration(int type) {
-//     if (type < SMALL_DOG || type > LARGE_DOG) {
-//         Serial.println("Invalid dog type received: " + String(type));
-//         return;
-//     }
-
-//     configurationForDog(type);
-//     writeValueToNVS("type_dog", type);
-//     mqtt_publish_message(TYPE_DOG, macAddress.c_str(), String(type));
-//     Serial.println("Dog type configured: " + String(type));
-// }
-
-// Hàm xử lý MQTT settings chính đã được tách nhỏ
-// void handleMQTTSettings(const JsonDocument &doc) {
-//     haveMessageViaMQTT = false;
-//     uint8_t lastSprinklerManualState = _sprinkler.manual;
-//     uint8_t lastFilterManualState = _filter.manual;
-
-//     // Xử lý từng phần riêng biệt
-//     handleManualControls(doc);
-//     handleDurationSettings(doc);
-//     handleActiveDays(doc);
-//     handleStartTime(doc);
-//     handleTimeSync(doc);
-
-//     // Xử lý cấu hình loại chó
-//     if (doc.containsKey("type_dog")) {
-//         handleDogTypeConfiguration(doc["type_dog"].as<int>());
-//     }
-
-//     // Cập nhật trạng thái và thông báo
-//     haveMessageViaMQTT = true;
-//     if (saveSettingsTaskHandle != NULL) {
-//         xTaskNotifyGive(saveSettingsTaskHandle);
-//     }
-
-//     if (lastSprinklerManualState != _sprinkler.manual || lastFilterManualState != _filter.manual) {
-//         xTaskNotifyGive(manualTaskHandle);
-//     }
-// }
-
-void handleMQTTSettings(const JsonDocument &doc) {
-  haveMessageViaMQTT = false;
-  uint8_t lastSprinklerManualState = _sprinkler.manual;
-  uint8_t lastFilterManualState = _filter.manual;
-
-  if (doc.containsKey("manual_sprinkler")) {
-    _sprinkler.manual = doc["manual_sprinkler"] | _sprinkler.manual;
-  }
-  
-  if (doc.containsKey("duration_sprinkler")) {
-    _sprinkler.duration = int(doc["duration_sprinkler"]) | _sprinkler.duration;
-  }
-
-  if (doc.containsKey("cycles_sprinkler")) {
-    _sprinkler.cyclesInDay = doc["cycles_sprinkler"] | _sprinkler.cyclesInDay;
-  }
-
-  
-  
-  if (doc.containsKey("active_days") && doc["active_days"].is<JsonArrayConst>()) {
-    JsonArrayConst daysArray = doc["active_days"].as<JsonArrayConst>();
-    for (int i = 0; i < 7; i++) {
-      _timeSys.days[i] = daysArray[i].as<int>();
-    }
-  }
-
-  if (doc.containsKey("start_time") && doc["start_time"].is<JsonArrayConst>()) {
-    JsonArrayConst startTimeSprinkler_Array = doc["start_time"].as<JsonArrayConst>();
-    start_time_sprinkler[0] = startTimeSprinkler_Array[0].as<uint32_t>();
-    start_time_sprinkler[1] = startTimeSprinkler_Array[1].as<uint32_t>();
-    startMinuteSprinkler = start_time_sprinkler[0] * 60 + start_time_sprinkler[1];
-    writeValueToNVS("start_hour", start_time_sprinkler[0]);
-    writeValueToNVS("start_minute", start_time_sprinkler[1]);
-  }
-
-  if (doc.containsKey("manual_filter")) {
-    _filter.manual = doc["manual_filter"] | _filter.manual;
-  }
-
-  if (doc.containsKey("duration_filter")) {
-    _filter.duration = int(doc["duration_filter"]) | _filter.duration;
-  }
-  
-
-  // Handle time sync and timer initialization
-  if (doc.containsKey("current_time")) {
-    String timeString = doc["current_time"].as<String>();
-    Serial.println("Time string received: " + timeString);
-    setCurrentTime(timeString.c_str());
-
-    int currentSec = currentTime.tm_hour * 3600 + currentTime.tm_min * 60 + currentTime.tm_sec;
-    int startSec = start_time_sprinkler[0] * 3600 + start_time_sprinkler[1] * 60;
-    _timeSys.period = 24 / _sprinkler.cyclesInDay;
-    Serial.println("Period in MQTT handle: " + String(_timeSys.period));
-
-    // Stop existing timers to avoid conflicts
-    if (countToStartTimer != NULL) {
-      stopTimer(&countToStartTimer);
-      countToStartTimer = NULL;
-    }
-    if (cycleTimer != NULL) {
-      stopTimer(&cycleTimer);
-      cycleTimer = NULL;
-    }
-    if (tickTimer != NULL) {
-      stopTimer(&tickTimer);
-      tickTimer = NULL;
-    }
-
-    if (currentSec < startSec) {
-      // Case 1: Current time is before start time
-      uint32_t secondsToStart = startSec - currentSec;
-      Serial.print("Starting one-shot timer to wait until first cycle: ");
-      Serial.println(secondsToStart);
-      startTimer(&tickTimer_itr, &tickTimer, 1); // Start tickTimer to increment tickSecond
-      startTimer(&countToStartTimer_itr, &countToStartTimer, secondsToStart - 5);
-    } else {
-      // Case 2: Current time is at or past start time
-      int minutesSinceStart = (currentSec - startSec) / 60;
-      int periodInMinutes = _timeSys.period * 60;
-      int cyclesElapsed = minutesSinceStart / periodInMinutes + 1;
-      int nextCycleMinute = startMinuteSprinkler + (cyclesElapsed) * periodInMinutes;
-      int currentMinute = currentTime.tm_hour * 60 + currentTime.tm_min;
-      uint32_t secondsToNextCycle = (nextCycleMinute - currentMinute) * 60;
-      currentSprinklerCycle = cyclesElapsed;
-      nextTickPeriod = currentSprinklerCycle * _timeSys.period * HOUR;
-      Serial.println("Cycle elapsed: " + String(cyclesElapsed));
-      Serial.println("Second to next cycle before adjust: " + String(secondsToNextCycle));
-      if (cyclesElapsed >= _sprinkler.cyclesInDay) {
-        // If all cycles for today are done, schedule for next day's first cycle
-        secondsToNextCycle += (24 * HOUR - (currentSec % (24 * HOUR)));
-      }
-
-      Serial.print("Missed first start time, starting one-shot timer to next cycle: ");
-      Serial.println(secondsToNextCycle);
-      startTimer(&tickTimer_itr, &tickTimer, 1); // Start tickTimer to increment tickSecond
-      startTimer(&countToStartTimer_itr, &countToStartTimer, secondsToNextCycle - 5);
-    }
-  }
-
-  if (doc.containsKey("type_dog")) {
-    int typeDog = doc["type_dog"];
-    if (typeDog == 0) {
-      Serial.println("================== MQTT SETTING ==================");
-      Serial.println("=================== SPRINKLER ====================");
-      Serial.println("Manual Sprinkler: " + String(_sprinkler.manual));
-      Serial.println("Duration Sprinkler: " + String(_sprinkler.duration) + " Minute");
-      Serial.println("Cycles Sprinkler: " + String(_sprinkler.cyclesInDay));
-      Serial.println("Start time Sprinkler: " + String(start_time_sprinkler[0]) + ":" + String(start_time_sprinkler[1]));
-      Serial.println("==================== FILTER ======================");
-      Serial.println("Manual Filter: " + String(_filter.manual));
-      Serial.println("Duration Filter: " + String(_filter.duration) + " h");
-      Serial.println("==================== WEEK ========================");
-      Serial.print("Sprinkler Days: ");
-      for (int i = 0; i < 7; i++) {
-          Serial.print(_timeSys.days[i]);
-          if (i < 6) Serial.print(", ");
-      }
-      Serial.println();
-      Serial.println("==================================================");
-    } else {
-      Serial.println("TYPE DOG CONFIGURATION");
-      Serial.print("Type: ");
-      Serial.println(typeDog);
-      configurationForDog(typeDog);
-    }
-  }
-
-  
-  // Đặt cờ và gửi thông báo khi nhận setting mới
-  haveMessageViaMQTT = true;
-  if (saveSettingsTaskHandle != NULL) {
-    xTaskNotifyGive(saveSettingsTaskHandle);
-  }
-
-  if (lastSprinklerManualState != _sprinkler.manual || lastFilterManualState != _filter.manual) {
-    Serial.println("Send notify to run MANUAL");
-    xTaskNotifyGive(manualTaskHandle);
+/**
+ * @brief Login to the server and retrieve the JWT token
+ * 
+ * This function logs in to the server using the provided email and password, and retrieves the JWT token and device ID.
+ */
+void loginAndGetToken(void) {
+  if (_httpClient.login(loginUrl, user_email, user_password)) {
+    jwtToken = _httpClient.getToken();
+    _httpClient.setToken(jwtToken);
+    device_id = _httpClient.getDeviceID();
+    Serial.println("Login successful!");
+    lastTokenRefresh = millis();
+  } else {
+    Serial.println("Login failed");
   }
 }
 
-void mqtt_publish_message(int topic_id, const char *mac_id, String message) {
-  char topic[MQTT_TOPIC_MAX_LEN];
-  switch (topic_id) {
-    case SPRINKLER_AUTO:
-      snprintf(topic, sizeof(topic), "device/%s/motor/sprinkler/auto", mac_id);
-      break;
-    case SPRINKLER_MANUAL:
-      snprintf(topic, sizeof(topic), "device/%s/motor/sprinkler/manual", mac_id);
-      break;
-    case FILTER_AUTO:
-      snprintf(topic, sizeof(topic), "device/%s/motor/filter/auto", mac_id);
-      break;
-    case FILTER_MANUAL:
-      snprintf(topic, sizeof(topic), "device/%s/motor/filter/manual", mac_id);
-      break;
-    case TYPE_DOG:
-      snprintf(topic, sizeof(topic), "device/%s/type_dog", mac_id);
-      break;
-    case WATER_LEVEL:
-      snprintf(topic, sizeof(topic), "device/%s/water_level", mac_id);
-      break;
+/**
+ * @brief Get the device status from the server
+ * 
+ * This function retrieves the device status from the server using the stored JWT token and device ID.
+ */
+void getDeviceStatus(void) {
+  if (!_httpClient.isTokenValid() || _httpClient.getDeviceID() == "") {
+    Serial.println("Missing token or device ID");
+    loginAndGetToken();
+    return;
   }
 
-  if (message != NULL) {
-    _mqtt.publishMessage(topic, message.c_str());
+  String url = String(getStatusUrl) + "?device_id=" + device_id;
+
+  String response = _httpClient.get(url, true);
+
+  if (response.isEmpty()) {
+    Serial.println("Failed to get status response.");
+    return;
   }
 
-  Serial.println(String(topic));
-}
+  Serial.println("Received JSON response:");
+  Serial.println(response);
 
-void mqtt_subscribe(int topic_id, const char *mac_id) {
-  char topic[MQTT_TOPIC_MAX_LEN];
-  switch (topic_id) {
-    case SPRINKLER_AUTO:
-      snprintf(topic, sizeof(topic), "device/%s/motor/sprinkler/auto", mac_id);
-      break;
-    case SPRINKLER_MANUAL:
-      snprintf(topic, sizeof(topic), "device/%s/motor/sprinkler/manual", mac_id);
-      break;
-    case FILTER_AUTO:
-      snprintf(topic, sizeof(topic), "device/%s/motor/filter/auto", mac_id);
-      break;
-    case FILTER_MANUAL:
-      snprintf(topic, sizeof(topic), "device/%s/motor/filter/manual", mac_id);
-      break;
-    case TYPE_DOG:
-      snprintf(topic, sizeof(topic), "device/%s/type_dog", mac_id);
-      break;
-    case WATER_LEVEL:
-      snprintf(topic, sizeof(topic), "device/%s/water_level", mac_id);
-      break;
+  StaticJsonDocument<1024> respDoc;
+  DeserializationError error = deserializeJson(respDoc, response);
+
+  if (error) {
+    Serial.println("Failed to parse JSON response");
+    return;
   }
 
-  // _mqtt.subscribeTopic(topic);
-  // Thử subscribe với retry
-    int retries = 0;
-    const int MAX_RETRIES = 3;
-    bool subscribed = false;
+  if (respDoc["status"] == "success") {
+    JsonObject data = respDoc["data"];
 
-    while (!subscribed && retries < MAX_RETRIES) {
-      if (_mqtt.subscribeTopic(topic)) {
-          Serial.printf("Successfully subscribed to: %s\n", topic);
-          subscribed = true;
-          break;
-      } else {
-          Serial.printf("Failed to subscribe to: %s (attempt %d/%d)\n", 
-                      topic, retries + 1, MAX_RETRIES);
-          retries++;
-          vTaskDelay(pdMS_TO_TICKS(500)); // Đợi 500ms trước khi thử lại
-      }
-    }
+    int sprinklerPumpState = data["pump1_status"].as<int>();
+    int filterPumpState = data["pump2_status"].as<int>();
+
+    _sprinkler.manual = sprinklerPumpState == 1 ? 1 : 0;
+    _filter.manual = filterPumpState == 1 ? 1 : 0;
+
+    Serial.println("Device Status: " + data["status"].as<String>());
+    // Serial.println("Water Level: " + String(data["water_level"].as<int>()) + "%");
+  } else {
+    Serial.println("Server returned non-success status.");
+  }
+
 }

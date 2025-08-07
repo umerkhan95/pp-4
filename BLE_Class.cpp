@@ -1,3 +1,4 @@
+#include "HardwareSerial.h"
 #include "BLE_Class.h"
 
 
@@ -9,6 +10,10 @@ size_t rxOffSet = 0;
 
 BLEHandler* BLEHandler::instance = nullptr;
 
+/**
+ * @brief Construct a new BLEHandler::BLEHandler object
+ * 
+ */
 BLEHandler::BLEHandler() {
   pServer = nullptr;
   pService = nullptr;
@@ -19,6 +24,10 @@ BLEHandler::BLEHandler() {
   instance = this;
 }
 
+/**
+ * @brief Start the BLE service
+ * 
+ */
 void BLEHandler::begin() {
   if (!is_ble_start) {
     Serial.println("Starting BLE......");
@@ -83,6 +92,10 @@ void BLEHandler::begin() {
   
 }
 
+/**
+ * @brief Stop the BLE service
+ * 
+ */
 void BLEHandler::end() {
     if (!is_ble_start) {
         return;
@@ -120,9 +133,6 @@ void BLEHandler::end() {
     if (pSSIDRequestChar) {
         pSSIDRequestChar->setCallbacks(nullptr);
     }
-    // if (pSSIDResponseChar) {
-    //     pSSIDResponseChar->removeDescriptor(pSSIDResponseChar->getDescriptorByUUID(BLEUUID((uint16_t)0x2902)));
-    // }
 
     // 5. Reset các con trỏ
     pWIFIStatusChar = nullptr;
@@ -139,6 +149,11 @@ void BLEHandler::end() {
     Serial.println("BLE stopped successfully");
 }
 
+/**
+ * @brief Send the list of SSIDs to the BLE client
+ * 
+ * @param ssid_list The list of SSIDs to send
+ */
 void BLEHandler::sendSSID(char* ssid_list) {
   Serial.println("Ready to send: " + (String)ssid_list);
 
@@ -148,6 +163,11 @@ void BLEHandler::sendSSID(char* ssid_list) {
   }
 }
 
+/**
+ * @brief Callback to handle write requests from the BLE client
+ * 
+ * @param pChar The characteristic that received the write request
+ */
 // Callback xử lý yêu cầu từ app
 void BLEHandler::BLECallbacks::onWrite(BLECharacteristic* pChar) {
   String val = pChar->getValue();
@@ -163,22 +183,31 @@ void BLEHandler::BLECallbacks::onWrite(BLECharacteristic* pChar) {
         rxBuffer[rxOffSet-1] = '\0';
         isRxBufferDone = true;
         Serial.printf("[BLE] Full command received: %s\n", rxBuffer);
+
+        rxOffSet = 0;
+        
         break;
       }
     }
     else {
       rxOffSet = 0;
+      memset(rxBuffer, 0, sizeof(rxBuffer));  // <-- Sửa lỗi bằng cách này
       break;
     }
   }
 }
 
+/**
+ * @brief Return the received command buffer
+ * 
+ * @return char* Pointer to the received command buffer
+ */
 char* BLEHandler::ble_app_return_rx_buffer(void) {
   if (isRxBufferDone == true)
   {
     isRxBufferDone = false;
     rxOffSet = 0;
-    printf("return rxBuffer: %s\n", rxBuffer);
+    Serial.printf("return rxBuffer: %s\n", rxBuffer);
     return rxBuffer;
   }
 

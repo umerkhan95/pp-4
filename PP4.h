@@ -1,7 +1,7 @@
 #ifndef _PP4_H_
 #define _PP4_H_
 #include <Arduino.h>
-// #define DEBUG
+#define DEBUG
 
 #define VERSION "v23.7.0"
 #define MQTT_TOPIC_MAX_LEN 80
@@ -24,6 +24,11 @@
 #define DRDY 7
 #define I2C_SDA 6
 #define I2C_SCL 5
+
+#define POST_INTERVAL 8000
+#define TOKEN_REFRESH_INTERVAL 3600000
+#define STATUS_CHECK_INTERVAL 6000
+#define SCHEDULE_CHECK_INTERVAL 5000
 
 typedef struct {
   uint32_t period;

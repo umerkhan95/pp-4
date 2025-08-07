@@ -6,13 +6,20 @@ BLEHandler _ble;
 TaskHandle_t WIFI::wifiTaskHandle = nullptr;
 void (*WIFI::connectedCallback)() = nullptr;
 WiFiScanClass wifi_scan;
+bool WIFI::hasWiFiSSID = false;
+bool WIFI::hasWiFiPass = false;
 
+/**
+ * @brief Initialize the WiFi module and BLE service
+ * 
+ */
 void WIFI::init() {
+  Serial.println("[WIFI] WiFi init");
   nvs_flash_init();
 
-  loadFromNVS("wifi_ssid", credentials.ssid, sizeof(credentials.ssid));
-  loadFromNVS("wifi_pass", credentials.pass, sizeof(credentials.pass));
-
+  hasWiFiSSID = loadFromNVS("wifi_ssid", credentials.ssid, sizeof(credentials.ssid));
+  hasWiFiPass = loadFromNVS("wifi_pass", credentials.pass, sizeof(credentials.pass));
+  Serial.println("SSID: " + String(credentials.ssid) + " Pass: " + String(credentials.pass));
   WiFi.mode(WIFI_STA);
   uint8_t mac[6];
   esp_read_mac(mac, ESP_MAC_WIFI_STA);
@@ -22,10 +29,11 @@ void WIFI::init() {
 
   if (wifiTaskHandle == nullptr) {
     xTaskCreate([](void*) {
+      delay(500);
       while (true) {
         handleBLECommand();
         if (!isConnected) connect();
-        // else _ble.end();
+        else _ble.end();
         vTaskDelay(pdMS_TO_TICKS(3000));
       }
     }, "wifi_loop", 12000, nullptr, 3, &wifiTaskHandle);
@@ -34,6 +42,10 @@ void WIFI::init() {
   _ble.begin();
 }
 
+/**
+ * @brief Connect to the WiFi network
+ * 
+ */
 void WIFI::connect() {
     WiFi.mode(WIFI_STA);
     WiFi.onEvent([](WiFiEvent_t event) {
@@ -43,7 +55,7 @@ void WIFI::connect() {
                 Serial.println("WiFi connected with IP: " + WiFi.localIP().toString());
                 
                 // Tránh gọi callback trong interrupt context
-                if (connectedCallback) {
+                // if (connectedCallback) {
                     // Tạo task riêng để xử lý callback
                     xTaskCreate([](void* parameter) {
                         // Delay để đảm bảo WiFi ổn định
@@ -56,22 +68,28 @@ void WIFI::connect() {
                         _ble.end();
                         vTaskDelay(pdMS_TO_TICKS(500));
                         Serial.println("[WIFI]: Calling callback function");
-                        connectedCallback();
+                        // connectedCallback();
                         vTaskDelete(NULL);
                     }, "WiFi_CB", 4096, NULL, 1, NULL);
-                }
+                // }
             }
         }
     });
-
+    Serial.println("SSID: " + String(credentials.ssid) + " Pass: " + String(credentials.pass));
     if (strlen(credentials.ssid) > 0 && strlen(credentials.pass) > 0) {
+      Serial.println("SSID: " + String(credentials.ssid) + " Pass: " + String(credentials.pass));
         WiFi.begin(credentials.ssid, credentials.pass);
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        Serial.println("WiFi status: " + String(WiFi.status()));
         if (WiFi.status() == WL_CONNECTED) isConnected = true;
         else Serial.println("Initial WiFi connect failed");
     }
 }
 
+/**
+ * @brief Disconnect from the WiFi network
+ * 
+ */
 void WIFI::disconnect() {
   WiFi.disconnect();
   // _ble.pWIFIStatusChar->setValue("WIFI_DISCONNECTED");
@@ -79,15 +97,41 @@ void WIFI::disconnect() {
   isConnected = false;
 }
 
+/**
+ * @brief Handle BLE commands received from the app
+ * 
+ */
 void WIFI::handleBLECommand() {
   char* input = _ble.ble_app_return_rx_buffer();
   if (input == nullptr) return;
 
   Serial.printf("BLE received: [%s]\n", input);
   if (strcmp(input, "RELOAD_WIFI\n") == 0) {
+    Serial.println("[WIFI] WiFi Reload");
     scanAndSendAPs((char*)g_ret_list_ap);
     _ble.instance->sendSSID((char*)g_ret_list_ap);
-  } else {
+  }
+  else if (strncmp(input, "EMAIL=", 6) == 0) {
+    Serial.println("[WIFI] Received Email");
+    // Parse email and password
+    char* email_start = input + 6;
+    char* pass_start = strstr(input, ";PASS=");
+
+    if (pass_start) {
+      *pass_start = '\0';  // terminate email string
+      pass_start += 6;     // move past ";PASS="
+
+      Serial.printf("Parsed Email: [%s]\n", email_start);
+      Serial.printf("Parsed Password: [%s]\n", pass_start);
+
+      saveToNVS("user_email", email_start);
+      saveToNVS("user_pw", pass_start);
+    } else {
+      Serial.println("Invalid format. Expected: EMAIL=...;PASS=...");
+    }
+  }
+  else {
+    Serial.println("[WIFI] Receive WiFi Credentials");
     char ssid[MAX_WIFI_SSID_LEN] = {0};
     char pass[MAX_WIFI_PASS_LEN] = {0};
     if (parseWiFiCommand(input, ssid, pass)) {
@@ -101,6 +145,11 @@ void WIFI::handleBLECommand() {
   memset(input, 0, strlen(input));
 }
 
+/**
+ * @brief Scan for available WiFi networks and send the list to the BLE client
+ * 
+ * @param ap_list The buffer to store the list of available SSIDs
+ */
 void WIFI::scanAndSendAPs(char* ap_list) {
   char* wifi_ap_list = (char*)malloc(MAX_WIFI_LIST_LEN);
   if (!wifi_ap_list) {
@@ -128,6 +177,14 @@ void WIFI::scanAndSendAPs(char* ap_list) {
   free(wifi_ap_list);
 }
 
+/**
+ * @brief Parse the WiFi command received from the app
+ * 
+ * @param input The command string
+ * @param ssid Output buffer for SSID
+ * @param pass Output buffer for password
+ * @return true if parsing was successful, false otherwise
+ */
 bool WIFI::parseWiFiCommand(const char* input, char* ssid, char* pass) {
   const char* prefix = "WIFI:";
   if (strncmp(input, prefix, strlen(prefix)) != 0) return false;
@@ -149,6 +206,12 @@ bool WIFI::parseWiFiCommand(const char* input, char* ssid, char* pass) {
   return true;
 }
 
+/**
+ * @brief Save a value to NVS with the specified key
+ * 
+ * @param key The key to save the value under
+ * @param val The value to save
+ */
 void WIFI::saveToNVS(const char* key, const char* val) {
   nvs_handle h;
   if (nvs_open("storage", NVS_READWRITE, &h) == ESP_OK) {
@@ -158,6 +221,14 @@ void WIFI::saveToNVS(const char* key, const char* val) {
   }
 }
 
+/**
+ * @brief Load a value from NVS with the specified key
+ * 
+ * @param key The key to load the value from
+ * @param out Output buffer for the loaded value
+ * @param len Length of the output buffer
+ * @return true if loading was successful, false otherwise
+ */
 bool WIFI::loadFromNVS(const char* key, char* out, size_t len) {
   nvs_handle h;
   size_t required = len;
@@ -170,10 +241,20 @@ bool WIFI::loadFromNVS(const char* key, char* out, size_t len) {
   return true;
 }
 
+/**
+ * @brief Set a callback function to be called when WiFi is connected
+ * 
+ * @param cb The callback function to set
+ */
 void WIFI::setConnectedCallback(void (*cb)()) {
   connectedCallback = cb;
 }
 
+/**
+ * @brief Get the MAC address of the WiFi interface
+ * 
+ * @return String The MAC address as a string
+ */
 String WIFI::getMacAddress() {
   return WiFi.macAddress();
 }
