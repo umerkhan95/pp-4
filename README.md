@@ -1,14 +1,38 @@
 # PP4 - Smart Pet Care System 🐕
 
-An intelligent IoT-based automated pet toilet system featuring ESP32 hardware control, PHP REST API backend, and comprehensive mobile app integration for optimal pet care management.
+An intelligent IoT-based automated pet toilet system featuring ESP32 hardware control, PHP REST API backend, Flutter mobile app integration, and comprehensive scheduling for optimal pet care management.
 
 ## 🌟 System Overview
 
 The PP4 Smart Pet Care System is a complete IoT solution consisting of:
-- **ESP32 Firmware**: Hardware control and sensor management
-- **PHP REST API**: Cloud backend with JWT authentication
-- **Mobile Integration**: BLE configuration and HTTP API control
-- **Database**: MySQL with timezone-aware scheduling
+- **ESP32 Firmware**: Enhanced hardware control with API synchronization
+- **PHP REST API**: Cloud backend with JWT authentication and enhanced scheduling
+- **Flutter Mobile App**: Complete BLE setup and WiFi configuration
+- **MySQL Database**: Comprehensive schema with timezone-aware scheduling
+- **Postman Collection**: Complete API testing suite
+
+## 🆕 Latest Updates (v23.7.0-enhanced)
+
+### **🚀 Major Enhancements:**
+- **Enhanced Sprinkler Scheduling**: Duration, cycles, active days, start time configuration
+- **Flutter BLE Integration**: Complete mobile app for WiFi setup and device configuration
+- **API Synchronization**: Real-time schedule sync between mobile app and ESP32
+- **Database Schema**: Comprehensive MySQL schema with enhanced device settings
+- **Postman Collection**: Complete API testing suite with all endpoints
+
+### **📱 New Flutter Features:**
+- Bluetooth Low Energy device discovery and connection
+- WiFi credential setup via BLE
+- User account configuration
+- Real-time device status monitoring
+- Intuitive UI with permission handling
+
+### **🔧 ESP32 Improvements:**
+- Enhanced schedule structure with multiple parameters
+- Automatic API schedule synchronization every 5 seconds
+- Improved BLE command handling for Flutter integration
+- NVS storage for all enhanced settings
+- Better error handling and recovery
 
 ## 🏗️ System Architecture
 
@@ -107,33 +131,95 @@ The system communicates with backend services at `porchpotty.codefied.co`:
 - `POST /api/update_device_status.php` - Device status updates from ESP32
 - `POST /api/manual_pump_control.php` - Manual pump control
 
-**Scheduling:**
-- `GET /api/get_sprinkler_schedule.php` - Retrieve schedules (timezone-aware)
-- `POST /api/set_sprinkler_schedule.php` - Basic schedule setting
+**Enhanced Scheduling:**
+- `GET /api/get_sprinkler_schedule.php` - Retrieve enhanced schedules with duration, cycles, active days
+- `POST /api/set_sprinkler_schedule.php` - Enhanced schedule setting with all parameters
 - `POST /api/newset_sprinkler_schedule.php` - Advanced timezone scheduling
 
 **Settings:**
 - `POST /api/update_dog_size.php` - Update pet size configuration
 
-### Database Schema
-MySQL database structure for complete system management:
+### Enhanced Schedule Parameters
+The new scheduling system supports comprehensive configuration:
+
+```json
+{
+    "device_id": "123",
+    "duration_sprinkler": 1,        // Duration in minutes
+    "cycles_sprinkler": 4,          // Number of cycles per day
+    "active_days": [1,1,1,1,1,1,1], // Active days [Sun,Mon,Tue,Wed,Thu,Fri,Sat]
+    "start_time": [8,0],            // Start time [hour, minute]
+    "times": ["08:00", "14:00", "20:00"], // Specific schedule times
+    "current_time": "Tuesday, July 15 2025 13:59:00"
+}
+
+## 📱 Flutter Mobile App Integration
+
+### Complete BLE Setup Solution
+The Flutter app provides seamless device configuration via Bluetooth Low Energy:
+
+**Key Features:**
+- **Device Discovery**: Automatic scanning for PP4 devices
+- **WiFi Configuration**: Send WiFi credentials via BLE
+- **User Setup**: Configure user account credentials
+- **Real-time Status**: Monitor connection and setup progress
+- **Permission Management**: Handle all required Bluetooth permissions
+
+### BLE Communication Protocol
+```dart
+// Service UUID: "e4f09000-2d00-4625-988c-bc09a4963c44"
+// Characteristics:
+// - WiFi Status:    "e4f09000-2d01-4625-988c-bc09a4963c44" (Read/Write/Notify)
+// - SSID Response:  "e4f09000-2d02-4625-988c-bc09a4963c44" (Read/Notify)  
+// - SSID Request:   "e4f09000-2d03-4625-988c-bc09a4963c44" (Write)
+
+// Command Format:
+// WiFi: "WIFI:SSID:PASSWORD\n"
+// User: "EMAIL=email;PASS=password\n"
+// Reload: "RELOAD_WIFI\n"
+```
+
+### Flutter Dependencies
+```yaml
+dependencies:
+  flutter_blue_plus: ^1.32.2
+  permission_handler: ^11.3.1
+```
+
+### Setup Flow
+1. **Scan** → Find "Porch-Potty-BLE-XXXX" devices
+2. **Connect** → Establish BLE connection
+3. **Discover** → Get available WiFi networks
+4. **Configure** → Send WiFi and user credentials
+5. **Monitor** → Track connection status
+6. **Complete** → Device connects to WiFi and API
+
+## 🗄️ Enhanced Database Schema
+Complete MySQL database structure with enhanced features:
 
 ```sql
 -- User Management
-users: id, email, password, created_at
-devices: id, user_id, device_name, created_at
+users: id, email, password, created_at, updated_at
+devices: id, user_id, device_name, mac_address, created_at
 dog_settings: user_id, dog_size (Small/Medium/Large)
 
--- Device Operations  
+-- Enhanced Device Operations  
 device_status: device_id, status, pump1_status, pump2_status, 
-               water_level, last_seen, updated_at
+               water_level, temperature, last_seen, created_at
 
--- Scheduling System
+-- Enhanced Device Settings
+device_settings: device_id, duration_sprinkler, cycles_sprinkler,
+                start_hour, start_minute, active_days (JSON), updated_at
+
+-- Advanced Scheduling System
 sprinkler_schedule: device_id, time_slot, local_time, utc_time, 
                    timezone, utc_offset, created_at
 
 -- Security & Recovery
-user_otps: email, otp, expires_at, created_at
+user_otps: email, otp, expires_at, used, created_at
+
+-- Optional Monitoring
+device_logs: device_id, action, details (JSON), created_at
 ```
 
 ### Task Management
@@ -505,6 +591,83 @@ JWT_SECRET=your_256_bit_secret_key
 SMTP_HOST=smtp.gmail.com
 SMTP_USER=your_email@gmail.com
 SMTP_PASS=your_app_password
+```
+
+## 📁 Project Files Overview
+
+### ESP32 Arduino Code
+- **`PP4.ino`** - Main Arduino sketch file
+- **`main.cpp`** - Core application logic with enhanced scheduling
+- **`main.h`** - Function declarations and includes
+- **`PP4.h`** - Hardware definitions and enhanced structures
+- **`WIFI_Class.cpp/.h`** - WiFi and BLE management
+- **`POST_GET.cpp/.h`** - HTTP client with JWT authentication
+- **`BLE_Class.cpp/.h`** - Bluetooth Low Energy implementation
+
+### Mobile App Integration
+- **`flutter_ble_integration.dart`** - Complete Flutter BLE setup app
+  - Device discovery and connection
+  - WiFi credential configuration
+  - User account setup
+  - Real-time status monitoring
+
+### Backend & Database
+- **`pp4_database_schema.sql`** - Complete MySQL database schema
+  - Enhanced device settings table
+  - Comprehensive user management
+  - Advanced scheduling system
+  - Security and logging tables
+
+### API Testing
+- **`PP4_API_Postman_Collection.json`** - Complete Postman collection
+  - All 17 API endpoints
+  - Authentication flow
+  - Enhanced scheduling tests
+  - Environment variables setup
+  - Automated token management
+
+### Documentation
+- **`README.md`** - Comprehensive project documentation
+- **API Documentation** - Embedded in Postman collection
+- **Database Schema** - Complete with sample data
+- **Flutter Setup Guide** - Step-by-step integration
+
+## 🧪 Testing & Development
+
+### Postman API Testing
+Import the provided Postman collection for comprehensive API testing:
+
+1. **Import Collection**: `PP4_API_Postman_Collection.json`
+2. **Set Base URL**: `http://porchpotty.codefied.co/api`
+3. **Test Authentication**: Run login to get JWT token
+4. **Test All Endpoints**: Complete workflow testing
+
+### Flutter App Testing
+```bash
+# Add dependencies to pubspec.yaml
+flutter pub add flutter_blue_plus permission_handler
+
+# Run the app
+flutter run
+```
+
+### Database Setup
+```bash
+# Import the schema
+mysql -u username -p < pp4_database_schema.sql
+
+# Verify tables
+mysql -u username -p -e "SHOW TABLES;" database_name
+```
+
+### ESP32 Development
+```cpp
+// Enable debug mode in PP4.h
+#define DEBUG
+
+// Monitor serial output at 115200 baud
+// Check API communication logs
+// Verify schedule synchronization
 ```
 
 ## 🌍 Global Deployment
