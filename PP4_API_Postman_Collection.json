@@ -1,0 +1,609 @@
+{
+	"info": {
+		"_postman_id": "pp4-smart-pet-care-api",
+		"name": "PP4 Smart Pet Care System API",
+		"description": "Complete API collection for PP4 Smart Pet Care System with JWT authentication, device management, scheduling, and pet settings.",
+		"schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+		"_exporter_id": "pp4-api-collection"
+	},
+	"item": [
+		{
+			"name": "Authentication",
+			"item": [
+				{
+					"name": "User Login",
+					"event": [
+						{
+							"listen": "test",
+							"script": {
+								"exec": [
+									"if (pm.response.code === 200) {",
+									"    const response = pm.response.json();",
+									"    if (response.status === 'success') {",
+									"        pm.environment.set('jwt_token', response.token);",
+									"        pm.environment.set('device_id', response.user.device_id);",
+									"        console.log('JWT Token saved:', response.token);",
+									"    }",
+									"}"
+								],
+								"type": "text/javascript"
+							}
+						}
+					],
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"password\": \"your_password\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/login.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"login.php"
+							]
+						},
+						"description": "Login with email and password to get JWT token and device information"
+					},
+					"response": []
+				},
+				{
+					"name": "User Registration",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"newuser@example.com\",\n    \"password\": \"secure_password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/signup.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"signup.php"
+							]
+						},
+						"description": "Register a new user account"
+					},
+					"response": []
+				},
+				{
+					"name": "Forgot Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/forgot_password.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"forgot_password.php"
+							]
+						},
+						"description": "Request password reset OTP via email"
+					},
+					"response": []
+				},
+				{
+					"name": "Create OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/create_otp.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"create_otp.php"
+							]
+						},
+						"description": "Generate OTP for email verification"
+					},
+					"response": []
+				},
+				{
+					"name": "Verify OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"otp\": \"123456\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/verify_otp.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"verify_otp.php"
+							]
+						},
+						"description": "Verify OTP code"
+					},
+					"response": []
+				},
+				{
+					"name": "Resend OTP",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/resend_otp.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"resend_otp.php"
+							]
+						},
+						"description": "Resend OTP to email"
+					},
+					"response": []
+				},
+				{
+					"name": "Reset Password",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"email\": \"user@example.com\",\n    \"otp\": \"123456\",\n    \"new_password\": \"new_secure_password123\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/reset_password.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"reset_password.php"
+							]
+						},
+						"description": "Reset password using verified OTP"
+					},
+					"response": []
+				}
+			],
+			"description": "Authentication endpoints for user management and security"
+		},
+		{
+			"name": "Device Management",
+			"item": [
+				{
+					"name": "Register Device",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_name\": \"Living Room Pet Toilet\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/register_device.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"register_device.php"
+							]
+						},
+						"description": "Register a new IoT device to user account"
+					},
+					"response": []
+				},
+				{
+					"name": "Get Device Status",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/get_device_status.php?device_id={{device_id}}",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"get_device_status.php"
+							],
+							"query": [
+								{
+									"key": "device_id",
+									"value": "{{device_id}}"
+								}
+							]
+						},
+						"description": "Get real-time device status including pump states and connectivity"
+					},
+					"response": []
+				},
+				{
+					"name": "Set Device Status",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"status\": \"online\",\n    \"pump1_status\": 0,\n    \"pump2_status\": 0,\n    \"water_level\": 85\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/set_device_status.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"set_device_status.php"
+							]
+						},
+						"description": "Update device status from mobile app"
+					},
+					"response": []
+				},
+				{
+					"name": "Update Device Status (ESP32)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"status\": \"online\",\n    \"pump1_status\": 1,\n    \"pump2_status\": 0,\n    \"water_level\": 75,\n    \"temperature\": 23.5\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/update_device_status.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"update_device_status.php"
+							]
+						},
+						"description": "Device status updates sent from ESP32 hardware"
+					},
+					"response": []
+				}
+			],
+			"description": "Device registration, status monitoring, and management endpoints"
+		},
+		{
+			"name": "Pump Control",
+			"item": [
+				{
+					"name": "Manual Pump Control",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"pump1_status\": 1,\n    \"pump2_status\": 0\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/manual_pump_control.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"manual_pump_control.php"
+							]
+						},
+						"description": "Manual control of sprinkler (pump1) and filter (pump2) pumps"
+					},
+					"response": []
+				}
+			],
+			"description": "Manual pump control for immediate operation override"
+		},
+		{
+			"name": "Sprinkler Scheduling",
+			"item": [
+				{
+					"name": "Get Sprinkler Schedule",
+					"request": {
+						"method": "GET",
+						"header": [
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"url": {
+							"raw": "{{base_url}}/get_sprinkler_schedule.php?device_id={{device_id}}&timezone=Asia/Karachi",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"get_sprinkler_schedule.php"
+							],
+							"query": [
+								{
+									"key": "device_id",
+									"value": "{{device_id}}"
+								},
+								{
+									"key": "timezone",
+									"value": "Asia/Karachi",
+									"description": "Optional timezone for schedule conversion"
+								}
+							]
+						},
+						"description": "Retrieve sprinkler schedules with timezone-aware conversion"
+					},
+					"response": []
+				},
+				{
+					"name": "Set Sprinkler Schedule (Enhanced)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"duration_sprinkler\": 1,\n    \"cycles_sprinkler\": 4,\n    \"active_days\": [1,1,1,1,1,1,1],\n    \"start_time\": [8,0],\n    \"times\": [\"08:00\", \"14:00\", \"20:00\"],\n    \"current_time\": \"Tuesday, July 15 2025 13:59:00\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/set_sprinkler_schedule.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"set_sprinkler_schedule.php"
+							]
+						},
+						"description": "Set enhanced sprinkler schedule with duration, cycles, active days, and start time configuration"
+					},
+					"response": []
+				},
+				{
+					"name": "Set Sprinkler Schedule (Advanced)",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"device_id\": \"{{device_id}}\",\n    \"times\": [\"08:00\", \"14:00\", \"20:00\"],\n    \"timezone\": \"Asia/Karachi\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/newset_sprinkler_schedule.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"newset_sprinkler_schedule.php"
+							]
+						},
+						"description": "Advanced sprinkler scheduling with timezone support and UTC conversion"
+					},
+					"response": []
+				}
+			],
+			"description": "Sprinkler scheduling with timezone-aware management"
+		},
+		{
+			"name": "Pet Settings",
+			"item": [
+				{
+					"name": "Update Dog Size",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							},
+							{
+								"key": "Authorization",
+								"value": "Bearer {{jwt_token}}"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"dog_size\": \"Medium\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/update_dog_size.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"update_dog_size.php"
+							]
+						},
+						"description": "Update dog size configuration (Small, Medium, Large) for customized operation cycles"
+					},
+					"response": []
+				}
+			],
+			"description": "Pet-specific settings for customized system behavior"
+		},
+		{
+			"name": "Email Services",
+			"item": [
+				{
+					"name": "Send Email",
+					"request": {
+						"method": "POST",
+						"header": [
+							{
+								"key": "Content-Type",
+								"value": "application/json"
+							}
+						],
+						"body": {
+							"mode": "raw",
+							"raw": "{\n    \"to_email\": \"user@example.com\",\n    \"subject\": \"Test Email\",\n    \"message\": \"This is a test email from PP4 system\"\n}"
+						},
+						"url": {
+							"raw": "{{base_url}}/send_email.php",
+							"host": [
+								"{{base_url}}"
+							],
+							"path": [
+								"send_email.php"
+							]
+						},
+						"description": "Send email notifications (used internally for OTP and alerts)"
+					},
+					"response": []
+				}
+			],
+			"description": "Email service endpoints for notifications and OTP delivery"
+		}
+	],
+	"event": [
+		{
+			"listen": "prerequest",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Auto-refresh JWT token if expired",
+					"const tokenTimestamp = pm.environment.get('token_timestamp');",
+					"const currentTime = Date.now();",
+					"const oneHour = 60 * 60 * 1000; // 1 hour in milliseconds",
+					"",
+					"if (tokenTimestamp && (currentTime - tokenTimestamp) > oneHour) {",
+					"    console.log('JWT token may be expired, consider refreshing');",
+					"}"
+				]
+			}
+		},
+		{
+			"listen": "test",
+			"script": {
+				"type": "text/javascript",
+				"exec": [
+					"// Global response logging",
+					"if (pm.response.code !== 200) {",
+					"    console.log('Request failed with status:', pm.response.code);",
+					"    console.log('Response:', pm.response.text());",
+					"}"
+				]
+			}
+		}
+	],
+	"variable": [
+		{
+			"key": "base_url",
+			"value": "http://porchpotty.codefied.co/api",
+			"type": "string"
+		},
+		{
+			"key": "jwt_token",
+			"value": "",
+			"type": "string"
+		},
+		{
+			"key": "device_id",
+			"value": "1",
+			"type": "string"
+		}
+	]
+}

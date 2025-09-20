@@ -35,7 +35,19 @@ typedef struct {
   uint32_t cycles;
   int days[7];
   int firstTime;
+  int start_hour;
+  int start_minute;
 } TimeSys_t;
+
+typedef struct {
+  int duration_sprinkler;
+  int cycles_sprinkler;
+  int active_days[7];
+  int start_time[2]; // [hour, minute]
+  String schedule_times[10]; // Array to store schedule times
+  int schedule_count;
+  bool settings_updated;
+} EnhancedSchedule_t;
 
 typedef struct{
   uint8_t manual:1;

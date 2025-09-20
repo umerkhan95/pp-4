@@ -11,6 +11,7 @@ POSTGET _httpClient;
 TimeSys_t _timeSys;
 configPump_t _sprinkler;
 configPump_t _filter;
+EnhancedSchedule_t _enhancedSchedule;
 
 bool isManualRunning = false;
 bool haveMessageViaMQTT;
@@ -154,6 +155,20 @@ void taskPOSTGET(void *param) {
       Serial.println("Get Pumps status...");
       getDeviceStatus();
       lastStatusCheck = currentMillis;
+    }
+
+    // Check for schedule updates from server
+    if (currentMillis - lastScheduleCheck > SCHEDULE_CHECK_INTERVAL) {
+      Serial.println("Getting sprinkler schedule...");
+      getSprinklerSchedule();
+      lastScheduleCheck = currentMillis;
+    }
+
+    // Send device status updates periodically
+    if (currentMillis - lastPost > POST_INTERVAL) {
+      Serial.println("Updating device status...");
+      updateDeviceStatus();
+      lastPost = currentMillis;
     }
   }
 }
@@ -525,6 +540,17 @@ void loadConfiguration(void) {
   user_email = user_email.length() ? user_email : "";
   user_password = user_password.length() ? user_password : "";
   device_id = device_id.length() ? device_id : "1";
+
+  // Initialize enhanced schedule with default values
+  _enhancedSchedule.duration_sprinkler = _sprinkler.duration;
+  _enhancedSchedule.cycles_sprinkler = _sprinkler.cyclesInDay;
+  _enhancedSchedule.start_time[0] = start_time_sprinkler[0];
+  _enhancedSchedule.start_time[1] = start_time_sprinkler[1];
+  for (int i = 0; i < 7; i++) {
+    _enhancedSchedule.active_days[i] = _timeSys.days[i];
+  }
+  _enhancedSchedule.schedule_count = 0;
+  _enhancedSchedule.settings_updated = false;
 
   if (_wifi.hasWiFiSSID && _wifi.hasWiFiPass) {
     isConfigured = true;
@@ -1097,5 +1123,130 @@ void getDeviceStatus(void) {
   } else {
     Serial.println("Server returned non-success status.");
   }
+}
 
+/**
+ * @brief Get the enhanced sprinkler schedule from the server
+ * 
+ * This function retrieves the enhanced sprinkler schedule including duration, cycles, active days, and schedule times.
+ */
+void getSprinklerSchedule(void) {
+  if (!_httpClient.isTokenValid() || device_id == "") {
+    Serial.println("Missing token or device ID for schedule");
+    return;
+  }
+
+  String url = String(getScheduleUrl) + "?device_id=" + device_id;
+  String response = _httpClient.get(url, true);
+
+  if (response.isEmpty()) {
+    Serial.println("Failed to get schedule response.");
+    return;
+  }
+
+  Serial.println("Received Schedule JSON response:");
+  Serial.println(response);
+
+  StaticJsonDocument<2048> respDoc;
+  DeserializationError error = deserializeJson(respDoc, response);
+
+  if (error) {
+    Serial.println("Failed to parse schedule JSON response");
+    return;
+  }
+
+  if (respDoc["status"] == "success") {
+    JsonObject data = respDoc["data"];
+
+    // Update enhanced schedule parameters
+    _enhancedSchedule.duration_sprinkler = data["duration_sprinkler"].as<int>();
+    _enhancedSchedule.cycles_sprinkler = data["cycles_sprinkler"].as<int>();
+    
+    // Parse start_time array
+    JsonArray startTimeArray = data["start_time"];
+    if (startTimeArray.size() >= 2) {
+      _enhancedSchedule.start_time[0] = startTimeArray[0].as<int>();
+      _enhancedSchedule.start_time[1] = startTimeArray[1].as<int>();
+    }
+    
+    // Parse active_days array
+    JsonArray activeDaysArray = data["active_days"];
+    for (int i = 0; i < 7 && i < activeDaysArray.size(); i++) {
+      _enhancedSchedule.active_days[i] = activeDaysArray[i].as<int>();
+    }
+    
+    // Parse schedule times
+    JsonArray scheduleArray = data["schedule"];
+    _enhancedSchedule.schedule_count = min((int)scheduleArray.size(), 10);
+    for (int i = 0; i < _enhancedSchedule.schedule_count; i++) {
+      _enhancedSchedule.schedule_times[i] = scheduleArray[i].as<String>();
+    }
+
+    // Update local variables for backward compatibility
+    _sprinkler.duration = _enhancedSchedule.duration_sprinkler;
+    _sprinkler.cyclesInDay = _enhancedSchedule.cycles_sprinkler;
+    
+    // Update TimeSys structure
+    _timeSys.start_hour = _enhancedSchedule.start_time[0];
+    _timeSys.start_minute = _enhancedSchedule.start_time[1];
+    for (int i = 0; i < 7; i++) {
+      _timeSys.days[i] = _enhancedSchedule.active_days[i];
+    }
+    
+    _enhancedSchedule.settings_updated = true;
+    hasNewSettings = true;
+
+    // Save to NVS
+    writeValueToNVS("ds", _enhancedSchedule.duration_sprinkler);
+    writeValueToNVS("cycles", _enhancedSchedule.cycles_sprinkler);
+    writeValueToNVS("start_hour", _enhancedSchedule.start_time[0]);
+    writeValueToNVS("start_minute", _enhancedSchedule.start_time[1]);
+    saveDaysToNVS(_enhancedSchedule.active_days);
+    writeValueToNVS("has_settings", 1);
+
+    Serial.println("Enhanced Schedule Updated:");
+    Serial.println("Duration: " + String(_enhancedSchedule.duration_sprinkler) + " minutes");
+    Serial.println("Cycles: " + String(_enhancedSchedule.cycles_sprinkler));
+    Serial.println("Start Time: " + String(_enhancedSchedule.start_time[0]) + ":" + String(_enhancedSchedule.start_time[1]));
+    Serial.print("Active Days: ");
+    for (int i = 0; i < 7; i++) {
+      Serial.print(String(_enhancedSchedule.active_days[i]) + " ");
+    }
+    Serial.println();
+    Serial.println("Schedule Times Count: " + String(_enhancedSchedule.schedule_count));
+    for (int i = 0; i < _enhancedSchedule.schedule_count; i++) {
+      Serial.println("  Time " + String(i+1) + ": " + _enhancedSchedule.schedule_times[i]);
+    }
+
+  } else {
+    Serial.println("Server returned non-success status for schedule.");
+  }
+}
+
+/**
+ * @brief Update device status to the server
+ * 
+ * This function sends the current device status including pump states and sensor data to the server.
+ */
+void updateDeviceStatus(void) {
+  if (!_httpClient.isTokenValid() || device_id == "") {
+    Serial.println("Missing token or device ID for status update");
+    return;
+  }
+
+  StaticJsonDocument<512> statusDoc;
+  statusDoc["device_id"] = device_id;
+  statusDoc["status"] = "online";
+  statusDoc["pump1_status"] = _sprinkler.manual || _sprinkler.autoControl ? 1 : 0;
+  statusDoc["pump2_status"] = _filter.manual || _filter.autoControl ? 1 : 0;
+  statusDoc["water_level"] = 85; // Default or from sensor
+  statusDoc["temperature"] = 23.5; // Default or from sensor
+
+  String response = _httpClient.post(updateStatusUrl, statusDoc, true);
+
+  if (!response.isEmpty()) {
+    Serial.println("Device status updated successfully");
+  } else {
+    Serial.println("Failed to update device status");
+  }
 }

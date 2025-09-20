@@ -36,6 +36,8 @@ void runSprinkler(void);
 void configurationForDog(int type);
 void loginAndGetToken(void);
 void getDeviceStatus(void);
+void getSprinklerSchedule(void);
+void updateDeviceStatus(void);
 
 void taskPOSTGET(void *param);
 void taskUpdateTime(void *param);
